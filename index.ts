@@ -112,6 +112,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 				let cachedLines: string[] | undefined;
 				const answers = new Map<string, Answer>();
 				const selectedIndices = new Set<number>();
+				let customText: string | null = null;
 
 				// Editor for "Type something" option
 				const editorTheme: EditorTheme = {
@@ -161,6 +162,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 
 				function resetSelection() {
 					selectedIndices.clear();
+					customText = null;
 				}
 
 				function advanceAfterAnswer() {
@@ -191,18 +193,24 @@ export default function questionnaire(pi: ExtensionAPI) {
 				function saveMultiAnswer(questionId: string) {
 					const opts = currentOptions();
 					const selIndices = [...selectedIndices].sort();
-					if (selIndices.length === 0) {
+					if (selIndices.length === 0 && !customText) {
 						// Nothing selected — treat as no answer (stay on page)
 						return;
 					}
 					const selValues = selIndices.map((i) => opts[i].value);
 					const selLabels = selIndices.map((i) => opts[i].label);
+					const allValues = [...selValues];
+					const allLabels = [...selLabels];
+					if (customText) {
+						allValues.push(customText);
+						allLabels.push(customText);
+					}
 					answers.set(questionId, {
 						id: questionId,
-						values: selValues,
-						labels: selLabels,
-						wasCustom: false,
-						indices: selIndices.map((i) => i + 1),
+						values: allValues,
+						labels: allLabels,
+						wasCustom: customText !== null,
+						indices: selIndices.length > 0 ? selIndices.map((i) => i + 1) : undefined,
 					});
 					advanceAfterAnswer();
 				}
@@ -210,8 +218,18 @@ export default function questionnaire(pi: ExtensionAPI) {
 				// Editor submit callback
 				editor.onSubmit = (value) => {
 					if (!inputQuestionId) return;
-					const trimmed = value.trim() || "(no response)";
-					saveSingleAnswer(inputQuestionId, trimmed, trimmed, true);
+					const trimmed = value.trim();
+					// Multi-select: save custom text, return to options
+					if (currentQuestion()?.multiSelect) {
+						if (trimmed) customText = trimmed;
+						inputMode = false;
+						inputQuestionId = null;
+						editor.setText("");
+						refresh();
+						return;
+					}
+					// Single-select: submit immediately
+					saveSingleAnswer(inputQuestionId, trimmed || "(no response)", trimmed || "(no response)", true);
 					inputMode = false;
 					inputQuestionId = null;
 					editor.setText("");
@@ -290,18 +308,18 @@ export default function questionnaire(pi: ExtensionAPI) {
 
 					// Enter: select option(s)
 					if (matchesKey(data, Key.enter) && q) {
-						// Multi-select: "Type something" can't be mixed with checkboxes
+						// Multi-select: Enter submits all toggled items + custom text
 						if (multi) {
 							const otherClicked = opts[optionIndex]?.isOther;
 							if (otherClicked) {
-								// Start freeform input (multi-select + custom)
+								// Start freeform input (preserves checkbox selections)
 								inputMode = true;
 								inputQuestionId = q.id;
-								editor.setText("");
+								editor.setText(customText || "");
 								refresh();
 								return;
 							}
-							// Submit all toggled items
+							// Submit all toggled items + any pending custom text
 							saveMultiAnswer(q.id);
 							return;
 						}
@@ -406,7 +424,11 @@ export default function questionnaire(pi: ExtensionAPI) {
 							add(` ${line}`);
 						}
 						lines.push("");
+						if (q?.multiSelect) {
+						add(theme.fg("dim", " Enter to confirm • Esc to go back"));
+					} else {
 						add(theme.fg("dim", " Enter to submit • Esc to cancel"));
+					}
 					} else if (currentTab === questions.length) {
 						add(theme.fg("accent", theme.bold(" Ready to submit")));
 						lines.push("");
@@ -482,10 +504,19 @@ export default function questionnaire(pi: ExtensionAPI) {
 
 			const answerLines = result.answers.flatMap((a) => {
 				const qLabel = questions.find((q) => q.id === a.id)?.label || a.id;
+				const q = questions.find((q) => q.id === a.id);
+				// Multi-select + custom: show both checkboxes and custom text
+				if (q?.multiSelect && a.labels.length > 1 && a.wasCustom) {
+					const checkboxLabels = a.labels.slice(0, -1).map((l, i) => {
+						const idx = a.indices?.[i];
+						return idx ? `${idx}. ${l}` : l;
+					}).join(", ");
+					const customLabel = a.labels[a.labels.length - 1];
+					return [`${qLabel}: user selected: ${checkboxLabels} • wrote: ${customLabel}`];
+				}
 				if (a.wasCustom) {
 					return [`${qLabel}: user wrote: ${a.labels[0]}`];
 				}
-				const q = questions.find((q) => q.id === a.id);
 				if (q?.multiSelect) {
 					const parts = a.labels.map((l, i) => {
 						const idx = a.indices?.[i];
@@ -525,6 +556,15 @@ export default function questionnaire(pi: ExtensionAPI) {
 				return new Text(theme.fg("warning", "Cancelled"), 0, 0);
 			}
 			const lines = details.answers.flatMap((a) => {
+				// Multi-select + custom: show both checkboxes and custom text
+				if (a.labels.length > 1 && a.wasCustom) {
+					const checkboxLabels = a.labels.slice(0, -1).map((l, i) => {
+						const idx = a.indices?.[i];
+						return idx ? `${idx}. ${l}` : l;
+					}).join(", ");
+					const customLabel = a.labels[a.labels.length - 1];
+					return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${checkboxLabels} ${theme.fg("muted", "• (wrote) ")}${customLabel}`];
+				}
 				if (a.wasCustom) {
 					return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${theme.fg("muted", "(wrote) ")}${a.labels[0]}`];
 				}
