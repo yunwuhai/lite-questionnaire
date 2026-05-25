@@ -1,0 +1,531 @@
+openapi: "3.0.3"
+info:
+  title: Questionnaire 工具 API
+  description: >
+    统一问答工具 API，支持单选、多选、文本输入、确认、评分五种问题类型。
+    提供条件子问题、约束校验、会话持久化等高级特性。
+  version: "2.0.0"
+
+servers:
+  - url: http://localhost
+    description: 本地 pi 工具调用
+
+paths:
+  /questionnaire:
+    post:
+      summary: 发起交互式问卷
+      description: >
+        向用户展示一系列问题，收集用户回答。
+        支持多种问题类型（单选/多选/文本/确认/评分），
+        支持条件子问题（根据父问题答案动态插入），
+        支持声明式约束校验。
+      operationId: executeQuestionnaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionnaireParams"
+      responses:
+        "200":
+          description: 用户成功完成并提交问卷
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionnaireResult"
+        "499":
+          description: 用户取消问卷（按 Esc）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled:
+                    type: boolean
+                    description: 固定为 true
+                  message:
+                    type: string
+                    description: 取消消息
+                    example: "User cancelled the questionnaire"
+
+components:
+  schemas:
+    # ============================================================
+    # 顶层请求/响应
+    # ============================================================
+
+    QuestionnaireParams:
+      type: object
+      description: 问卷配置，包含问题列表
+      required:
+        - questions
+      properties:
+        questions:
+          type: array
+          description: 问题列表，按顺序展示
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Question"
+
+    QuestionnaireResult:
+      type: object
+      description: 问卷提交结果，键为问题 id，值为对应答案
+      properties:
+        answers:
+          type: object
+          description: 每个问题的答案，键为问题 id
+          additionalProperties:
+            $ref: "#/components/schemas/Answer"
+        submittedAt:
+          type: string
+          format: date-time
+          description: 提交时间戳
+
+    # ============================================================
+    # 问题类型（多态）
+    # ============================================================
+
+    Question:
+      oneOf:
+        - $ref: "#/components/schemas/SelectQuestion"
+        - $ref: "#/components/schemas/MultiSelectQuestion"
+        - $ref: "#/components/schemas/TextQuestion"
+        - $ref: "#/components/schemas/ConfirmQuestion"
+        - $ref: "#/components/schemas/RatingQuestion"
+      discriminator:
+        propertyName: type
+        mapping:
+          select: "#/components/schemas/SelectQuestion"
+          multiSelect: "#/components/schemas/MultiSelectQuestion"
+          text: "#/components/schemas/TextQuestion"
+          confirm: "#/components/schemas/ConfirmQuestion"
+          rating: "#/components/schemas/RatingQuestion"
+
+    # ============================================================
+    # 共享基础结构
+    # ============================================================
+
+    BaseQuestion:
+      type: object
+      description: 所有问题类型的公共基础字段
+      required:
+        - id
+        - label
+        - prompt
+      properties:
+        id:
+          type: string
+          description: 问题唯一标识，用于结果映射的键名
+          example: "language"
+        label:
+          type: string
+          description: Tab 标签栏中显示的短标签
+          example: "语言"
+        prompt:
+          type: string
+          description: 完整的问题文本，展示在面板主体区域
+          example: "请选择你使用的编程语言"
+        required:
+          type: boolean
+          default: true
+          description: |
+            是否为必答问题。
+            必答题 prompt 后缀会显示 `[必填]` 标签；
+            非必答题允许跳过（Enter 不选直接进入下一题，进度点标记为绿色）。
+        constraints:
+          type: array
+          description: 约束条件列表，声明式校验规则
+          items:
+            $ref: "#/components/schemas/Constraint"
+        children:
+          type: array
+          description: |
+            条件子问题列表。当父问题答案为指定值时，子问题会动态插入到
+            Tab 序列中（紧跟在父问题之后）。子问题本身也可以嵌套子问题。
+          items:
+            $ref: "#/components/schemas/Question"
+        showIf:
+          type: object
+          description: |
+            条件显示规则，定义当前问题（子问题）在何种父问题答案下才显示。
+            仅用于 children 数组中的子问题，父问题无需此字段。
+          required:
+            - value
+          properties:
+            value:
+              type: string
+              description: 父问题答案匹配值。当父问题的答案等于此值时，当前子问题才会插入 Tab 序列
+              example: "ts"
+
+    Constraint:
+      type: object
+      description: 声明式约束校验规则，在用户提交问题时进行验证
+      required:
+        - type
+        - message
+      properties:
+        type:
+          type: string
+          description: 约束类型
+          enum:
+            - required
+            - minSelect
+            - maxSelect
+            - minLength
+            - maxLength
+            - pattern
+        value:
+          description: |
+            约束参数值，具体含义取决于 type：
+            - minSelect: 最少选择项数（正整数）
+            - maxSelect: 最多选择项数（正整数）
+            - minLength: 文本最小长度（正整数）
+            - maxLength: 文本最大长度（正整数）
+            - pattern: 正则表达式字符串
+            - required: 不需要 value（忽略此字段）
+          oneOf:
+            - type: number
+            - type: string
+        message:
+          type: string
+          description: 校验失败时显示的错误提示信息
+          example: "至少选择一项"
+
+    Option:
+      type: object
+      description: 选项定义，用于 select 和 multiSelect 类型问题
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+          description: 选项的唯一值，作为答案返回
+          example: "ts"
+        label:
+          type: string
+          description: 选项的显示文本
+          example: "TypeScript"
+        description:
+          type: string
+          description: 选项的可选描述，显示在 label 下方
+
+    # ============================================================
+    # 具体问题类型
+    # ============================================================
+
+    SelectQuestion:
+      allOf:
+        - $ref: "#/components/schemas/BaseQuestion"
+        - type: object
+          required:
+            - type
+            - maxSelect
+            - options
+          properties:
+            type:
+              type: string
+              enum: [select]
+              description: 固定为 `select`
+            maxSelect:
+              type: integer
+              enum: [1]
+              default: 1
+              description: 固定为 1，表示单选模式
+            options:
+              type: array
+              description: 可选项列表。末尾自动追加"自定义"选项，允许用户输入自定义值
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/Option"
+
+    MultiSelectQuestion:
+      allOf:
+        - $ref: "#/components/schemas/BaseQuestion"
+        - type: object
+          required:
+            - type
+            - maxSelect
+            - options
+          properties:
+            type:
+              type: string
+              enum: [multiSelect]
+              description: 固定为 `multiSelect`
+            maxSelect:
+              type: integer
+              minimum: 2
+              description: 最大可选数量，必须 > 1
+              example: 3
+            options:
+              type: array
+              description: 可选项列表。末尾自动追加"自定义"选项
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/Option"
+
+    TextQuestion:
+      allOf:
+        - $ref: "#/components/schemas/BaseQuestion"
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [text]
+              description: 固定为 `text`
+            placeholder:
+              type: string
+              description: 输入框占位符文本
+              example: "请输入项目描述..."
+            multiline:
+              type: boolean
+              default: false
+              description: 是否使用多行文本编辑模式
+
+    ConfirmQuestion:
+      allOf:
+        - $ref: "#/components/schemas/BaseQuestion"
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [confirm]
+              description: 固定为 `confirm`
+            yesLabel:
+              type: string
+              default: "是"
+              description: "是"按钮的显示文本
+              example: "创建"
+            noLabel:
+              type: string
+              default: "否"
+              description: "否"按钮的显示文本
+              example: "取消"
+
+    RatingQuestion:
+      allOf:
+        - $ref: "#/components/schemas/BaseQuestion"
+        - type: object
+          required:
+            - type
+            - range
+          properties:
+            type:
+              type: string
+              enum: [rating]
+              description: 固定为 `rating`
+            range:
+              type: object
+              description: 评分范围
+              required:
+                - min
+                - max
+              properties:
+                min:
+                  type: integer
+                  description: 最小评分值（闭区间）
+                  example: 1
+                max:
+                  type: integer
+                  description: 最大评分值（闭区间）
+                  example: 5
+            showEmoji:
+              type: boolean
+              default: false
+              description: 是否在滑块上方显示表情量表（😡 😐 😐 😐 😍）
+            annotations:
+              type: object
+              description: 数值到文字注释的映射，显示在滑块下方
+              additionalProperties:
+                type: string
+              example:
+                "1": "非常差"
+                "3": "一般"
+                "5": "非常好"
+
+    # ============================================================
+    # 答案类型
+    # ============================================================
+
+    Answer:
+      oneOf:
+        - $ref: "#/components/schemas/SelectAnswer"
+        - $ref: "#/components/schemas/MultiSelectAnswer"
+        - $ref: "#/components/schemas/TextAnswer"
+        - $ref: "#/components/schemas/ConfirmAnswer"
+        - $ref: "#/components/schemas/RatingAnswer"
+
+    SelectAnswer:
+      type: object
+      description: 单选答案
+      properties:
+        value:
+          type: string
+          description: 用户选择的选项值
+          example: "ts"
+        label:
+          type: string
+          description: 用户选择的选项显示文本
+          example: "TypeScript"
+        wasCustom:
+          type: boolean
+          default: false
+          description: 是否来自"自定义"选项的输入
+
+    MultiSelectAnswer:
+      type: object
+      description: 多选答案
+      properties:
+        values:
+          type: array
+          description: 用户选择的所有选项值
+          items:
+            type: string
+          example: ["ts", "rs"]
+        labels:
+          type: array
+          description: 用户选择的所有选项显示文本
+          items:
+            type: string
+          example: ["TypeScript", "Rust"]
+        wasCustom:
+          type: boolean
+          default: false
+          description: 是否包含"自定义"选项的输入
+
+    TextAnswer:
+      type: object
+      description: 文本答案
+      properties:
+        text:
+          type: string
+          description: 用户输入的文本内容
+          example: "一个高性能 API 服务"
+
+    ConfirmAnswer:
+      type: object
+      description: 确认答案
+      properties:
+        confirmed:
+          type: boolean
+          description: 用户的选择，true = 是/确认，false = 否/取消
+          example: true
+        label:
+          type: string
+          description: 用户选中的按钮文本
+          example: "创建"
+
+    RatingAnswer:
+      type: object
+      description: 评分答案
+      properties:
+        value:
+          type: integer
+          description: 用户选择的评分值
+          example: 5
+        annotation:
+          type: string
+          description: 对应数值的文字注释（如果配置了 annotations 且该值有注释）
+          example: "非常好"
+
+  # ============================================================
+  # 完整请求示例
+  # ============================================================
+
+  examples:
+    FullQuestionnaireExample:
+      summary: 涵盖所有 5 种问题类型的完整示例
+      value:
+        questions:
+          - id: "language"
+            type: "select"
+            maxSelect: 1
+            label: "语言"
+            prompt: "请选择你想使用的编程语言"
+            required: true
+            options:
+              - value: "ts"
+                label: "TypeScript"
+                description: "类型安全的 JavaScript 超集"
+              - value: "py"
+                label: "Python"
+              - value: "rs"
+                label: "Rust"
+                description: "高性能系统编程语言"
+            children:
+              - id: "framework"
+                type: "select"
+                maxSelect: 1
+                label: "框架"
+                prompt: "请选择 Web 框架"
+                showIf:
+                  value: "ts"
+                options:
+                  - value: "react"
+                    label: "React"
+                  - value: "vue"
+                    label: "Vue"
+                  - value: "svelte"
+                    label: "Svelte"
+
+          - id: "features"
+            type: "multiSelect"
+            maxSelect: 3
+            label: "功能"
+            prompt: "请选择你需要的功能模块"
+            required: true
+            options:
+              - value: "auth"
+                label: "用户认证"
+              - value: "api"
+                label: "REST API"
+              - value: "ws"
+                label: "WebSocket"
+              - value: "db"
+                label: "数据库"
+              - value: "cache"
+                label: "缓存"
+            constraints:
+              - type: "minSelect"
+                value: 1
+                message: "至少选择一项功能"
+              - type: "maxSelect"
+                value: 3
+                message: "最多选择 3 项功能"
+
+          - id: "description"
+            type: "text"
+            label: "描述"
+            prompt: "请简要描述你的项目"
+            required: true
+            placeholder: "输入项目描述..."
+            multiline: true
+            constraints:
+              - type: "minLength"
+                value: 10
+                message: "描述至少需要 10 个字符"
+
+          - id: "license"
+            type: "confirm"
+            label: "许可"
+            prompt: "是否使用 MIT 开源许可证？"
+            yesLabel: "是，使用 MIT"
+            noLabel: "否，选择其他"
+
+          - id: "satisfaction"
+            type: "rating"
+            label: "满意度"
+            prompt: "你对当前开发体验的满意度如何？"
+            required: true
+            range:
+              min: 1
+              max: 5
+            showEmoji: true
+            annotations:
+              "1": "非常不满意"
+              "3": "一般"
+              "5": "非常满意"
