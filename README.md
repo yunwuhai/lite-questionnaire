@@ -21,8 +21,10 @@
 ## 交互方式
 
 **单选模式（默认）：**
-- ↑↓ 导航，Enter 选中，Esc 取消
-- 选择 "Type something." 进入编辑器
+- **Space** 选中当前选项，**Enter** 确认提交
+- **↑↓** 移动光标
+- Esc 取消
+- Space 在 "Type something." 上进入编辑器，提交后立即保存
 
 **多选模式（`multiSelect: true`）：**
 ```
@@ -33,13 +35,17 @@
 
  Space toggle · ↑↓ move · Enter confirm · Esc cancel
 ```
-- **Space** 勾选/取消选项
+- **Space** 勾选/取消选项；在 "Type something." 上按 Space 进入编辑器
 - **↑↓** 移动光标
-- Enter 确认所有勾选项（含已输入的自定义文本）
-- "Type something." 可以与复选框共存：输入自定义文本后 Enter 回到列表，再按 Enter 一起提交
+- **Enter** 确认所有勾选项（含已输入的自定义文本），始终提交全部
+- 无勾选时不响应 Enter（必须至少选一项）
+- 切换 Tab 后返回，已勾选项和自定义文本自动恢复
+- "Type something." 自定义后自动显示为已勾选，标签替换为输入内容
+- 编辑器中 Esc 丢弃自定义文本返回，Enter 保存返回
 
 **多问题模式：**
 - **Tab / →** 下一题，**Shift+Tab / ←** 上一题
+- 切换 Tab 时自动恢复该题的已选状态和自定义文本
 - 最后一个 Tab 是 "Submit" 汇总页
 - 每个问题独立作答，互不干扰
 
