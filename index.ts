@@ -156,8 +156,13 @@ export default function questionnaire(pi: ExtensionAPI) {
 					return opts;
 				}
 
+				function hasAnswer(questionId: string): boolean {
+					const a = answers.get(questionId);
+					return a !== undefined && a.values.length > 0;
+				}
+
 				function allAnswered(): boolean {
-					return questions.every((q) => answers.has(q.id));
+					return questions.every((q) => hasAnswer(q.id));
 				}
 
 				function resetSelection() {
@@ -186,6 +191,34 @@ export default function questionnaire(pi: ExtensionAPI) {
 							customText = answer.labels[0];
 						}
 					}
+				}
+
+				function saveDraft(questionId: string) {
+					const opts = currentOptions();
+					const selIndices = [...selectedIndices].sort();
+					const selValues = selIndices.map((i) => opts[i].value);
+					const selLabels = selIndices.map((i) => opts[i].label);
+					const allValues = [...selValues];
+					const allLabels = [...selLabels];
+					if (customText) {
+						allValues.push(customText);
+						allLabels.push(customText);
+					}
+					answers.set(questionId, {
+						id: questionId,
+						values: allValues,
+						labels: allLabels,
+						wasCustom: customText !== null,
+						indices: selIndices.length > 0 ? selIndices.map((i) => i + 1) : undefined,
+					});
+				}
+
+				function findNextUnanswered(fromIndex: number, direction: 1 | -1): number {
+					for (let i = 0; i < questions.length; i++) {
+						const idx = ((fromIndex + direction * (i + 1)) % questions.length + questions.length) % questions.length;
+						if (!hasAnswer(questions[idx].id)) return idx;
+					}
+					return questions.length; // Submit tab
 				}
 
 				function advanceAfterAnswer() {
@@ -281,14 +314,32 @@ export default function questionnaire(pi: ExtensionAPI) {
 
 					// Tab navigation (multi-question only)
 					if (isMulti) {
-						if (matchesKey(data, Key.tab) || matchesKey(data, Key.right)) {
+						if (matchesKey(data, Key.tab)) {
+							if (q) saveDraft(q.id);
+							currentTab = findNextUnanswered(currentTab, 1);
+							optionIndex = 0;
+							restoreSelection();
+							refresh();
+							return;
+						}
+						if (matchesKey(data, Key.shift("tab"))) {
+							if (q) saveDraft(q.id);
+							currentTab = findNextUnanswered(currentTab, -1);
+							optionIndex = 0;
+							restoreSelection();
+							refresh();
+							return;
+						}
+						if (matchesKey(data, Key.right)) {
+							if (q) saveDraft(q.id);
 							currentTab = (currentTab + 1) % totalTabs;
 							optionIndex = 0;
 							restoreSelection();
 							refresh();
 							return;
 						}
-						if (matchesKey(data, Key.shift("tab")) || matchesKey(data, Key.left)) {
+						if (matchesKey(data, Key.left)) {
+							if (q) saveDraft(q.id);
 							currentTab = (currentTab - 1 + totalTabs) % totalTabs;
 							optionIndex = 0;
 							restoreSelection();
@@ -323,7 +374,8 @@ export default function questionnaire(pi: ExtensionAPI) {
 					if (matchesKey(data, Key.space) && q) {
 						const spaceOpt = opts[optionIndex];
 						if (spaceOpt?.isOther) {
-							// Enter freeform input (preserves existing selections)
+							// Enter freeform input
+							if (!multi) selectedIndices.clear(); // Clear radio selection
 							inputMode = true;
 							inputQuestionId = q.id;
 							editor.setText(customText || "");
@@ -391,7 +443,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 						const tabs: string[] = ["← "];
 						for (let i = 0; i < questions.length; i++) {
 							const isActive = i === currentTab;
-							const isAnswered = answers.has(questions[i].id);
+							const isAnswered = hasAnswer(questions[i].id);
 							const lbl = questions[i].label;
 							const box = isAnswered ? "■" : "□";
 							const color = isAnswered ? "success" : "muted";
@@ -497,7 +549,7 @@ export default function questionnaire(pi: ExtensionAPI) {
 							add(theme.fg("success", " Press Enter to submit"));
 						} else {
 							const missing = questions
-								.filter((q) => !answers.has(q.id))
+								.filter((q) => !hasAnswer(q.id))
 								.map((q) => q.label)
 								.join(", ");
 							add(theme.fg("warning", ` Unanswered: ${missing}`));
@@ -512,11 +564,11 @@ export default function questionnaire(pi: ExtensionAPI) {
 					if (!inputMode) {
 						let help: string;
 						if (multi && isMulti) {
-							help = " Tab/←→ navigate • Space toggle • ↑↓ move • Enter confirm • Esc cancel";
+							help = " Tab next unanswered • ←→ adjacent • Space toggle • ↑↓ move • Enter confirm • Esc cancel";
 						} else if (multi) {
 							help = " Space toggle • ↑↓ move • Enter confirm • Esc cancel";
 						} else if (isMulti) {
-							help = " Tab/←→ navigate • Space select • ↑↓ move • Enter confirm • Esc cancel";
+							help = " Tab next unanswered • ←→ adjacent • Space select • ↑↓ move • Enter confirm • Esc cancel";
 						} else {
 							help = " Space select • ↑↓ move • Enter confirm • Esc cancel";
 						}
