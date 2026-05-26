@@ -291,12 +291,12 @@ components:
             yesLabel:
               type: string
               default: "是"
-              description: "是"按钮的显示文本
+              description: 「是」按钮的显示文本
               example: "创建"
             noLabel:
               type: string
               default: "否"
-              description: "否"按钮的显示文本
+              description: 「否」按钮的显示文本
               example: "取消"
 
     RatingQuestion:
@@ -320,16 +320,16 @@ components:
               properties:
                 min:
                   type: integer
-                  description: 最小评分值（闭区间）
-                  example: 1
+                  enum: [1]
+                  description: 固定为 1
                 max:
                   type: integer
-                  description: 最大评分值（闭区间）
-                  example: 5
+                  enum: [5]
+                  description: 固定为 5
             showEmoji:
               type: boolean
               default: false
-              description: 是否在滑块上方显示表情量表（😡 😐 😐 😐 😍）
+              description: 是否在滑块上方显示表情量表（😡 😟 😐 😊 😍）
             annotations:
               type: object
               description: 数值到文字注释的映射，显示在滑块下方
@@ -418,7 +418,9 @@ components:
       properties:
         value:
           type: integer
-          description: 用户选择的评分值
+          minimum: 1
+          maximum: 5
+          description: 用户选择的评分值（1-5）
           example: 5
         annotation:
           type: string
