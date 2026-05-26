@@ -1,6 +1,6 @@
 {
   "name": "lite-questionnaire",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "轻量级交互式问卷工具 — 单选、多选、文本、确认、评分，带条件子问题和声明式校验",
   "keywords": [
     "pi-package",
@@ -17,8 +17,12 @@
     "url": "git+https://github.com/yunwuhai/lite-questionnaire.git"
   },
   "pi": {
-    "extensions": ["./index.ts"],
-    "skills": ["./skills"],
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
     "image": "https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/logo.png"
   },
   "peerDependencies": {
