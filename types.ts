@@ -62,7 +62,7 @@ export interface RatingQuestion extends BaseQuestion {
   type: "rating";
   range: { min: number; max: number };
   showEmoji?: boolean; // 是否显示表情量表
-  annotations?: Record<number, string>; // 数值 → 文字注释
+  annotations?: Record<string, string>; // 数值 → 文字注释
 }
 
 export type Question = SelectQuestion | MultiSelectQuestion | TextQuestion | ConfirmQuestion | RatingQuestion;
@@ -85,15 +85,35 @@ export interface QuestionUIState {
   textDraft: string; // text 类型当前编辑内容
 }
 
-// ─── 答案 ─────────────────────────────────────────────
+// ─── 答案（按 OpenAPI 规范区分 5 种类型） ──────────────
 
-export interface Answer {
-  id: string; // 对应问题 id
-  values: string[]; // 用户选择的值列表
-  labels: string[]; // 用户选择的标签列表
-  wasCustom: boolean; // 是否包含自定义输入
-  indices?: number[]; // 1-based 选项索引
+export interface SelectAnswer {
+  value: string;
+  label: string;
+  wasCustom?: boolean;
 }
+
+export interface MultiSelectAnswer {
+  values: string[];
+  labels: string[];
+  wasCustom?: boolean;
+}
+
+export interface TextAnswer {
+  text: string;
+}
+
+export interface ConfirmAnswer {
+  confirmed: boolean;
+  label: string;
+}
+
+export interface RatingAnswer {
+  value: number;
+  annotation: string;
+}
+
+export type Answer = SelectAnswer | MultiSelectAnswer | TextAnswer | ConfirmAnswer | RatingAnswer;
 
 // ─── 问卷参数（顶层输入） ─────────────────────────────
 
@@ -104,9 +124,13 @@ export interface QuestionnaireParams {
 // ─── 结果 ─────────────────────────────────────────────
 
 export interface QuestionnaireResult {
-  questions: FlatQuestion[];
-  answers: Answer[];
-  cancelled: boolean;
+  answers: Record<string, Answer>;
+  submittedAt: string;
+}
+
+export interface CancelledResult {
+  cancelled: true;
+  message: string;
 }
 
 // ─── 进度点颜色 ───────────────────────────────────────

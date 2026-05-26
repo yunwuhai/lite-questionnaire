@@ -5,10 +5,10 @@
  */
 
 import type { EditorTheme } from "@earendil-works/pi-tui";
-import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Editor } from "@earendil-works/pi-tui";
 import type { Core } from "./core";
-import type { FlatQuestion, ProgressColor } from "./types";
+import type { Answer, FlatQuestion, ProgressColor } from "./types";
 
 // ─── Editor 工厂 ────────────────────────────────────────
 
@@ -32,7 +32,10 @@ export function panelBottom(width: number, theme: { fg: (c: string, t: string) =
 
 /** 面板内边距行 */
 export function panelLine(text: string, width: number): string {
-  return "│ " + text.padEnd(width - 4) + " │";
+  const innerWidth = Math.max(0, width - 4);
+  const clipped = truncateToWidth(text, innerWidth, "");
+  const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
+  return "│ " + clipped + padding + " │";
 }
 
 // ─── 进度点 ─────────────────────────────────────────────
@@ -149,7 +152,7 @@ export function renderHelpBar(
   switch (q.type) {
     case "select":
     case "multiSelect": {
-      const base = `Space ${q.type === "multiSelect" ? "切换" : "选择"} · ↑↓ 移动 · Enter 提交`;
+      const base = `Space ${q.type === "multiSelect" ? "切换" : "选择"} · Tab 编辑自定义 · ↑↓ 移动 · Enter 提交`;
       const nav = isMultiQuestion ? " · ← → 切换问题" : "";
       const extra = " · Esc 取消";
       return theme.fg("dim", base + nav + extra);
@@ -182,28 +185,35 @@ export function renderSubmitPage(
 
   for (const q of core.questions) {
     const answer = core.answers.get(q.id);
-    if (!answer || answer.values.length === 0) {
+    if (!answer) {
       lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
-    } else if (answer.wasCustom && answer.labels.length === 1) {
-      lines.push(` ✓ ${theme.fg("success", q.label)}: ${theme.fg("muted", "(自定义) ")}${answer.labels[0]}`);
-    } else if (answer.wasCustom) {
-      // 多选 + 自定义
-      const checkboxLabels = answer.labels.slice(0, -1).map((l, i) => {
-        const idx = answer.indices?.[i];
-        return idx ? `${idx}. ${l}` : l;
-      }).join(", ");
-      const customLabel = answer.labels[answer.labels.length - 1];
-      lines.push(` ✓ ${theme.fg("success", q.label)}: ${checkboxLabels} ${theme.fg("muted", "· 自定义: ")}${customLabel}`);
-    } else if (answer.labels.length > 1) {
-      const parts = answer.labels.map((l, i) => {
-        const idx = answer.indices?.[i];
-        return idx ? `${idx}. ${l}` : l;
-      }).join(", ");
-      lines.push(` ✓ ${theme.fg("success", q.label)}: ${parts}`);
-    } else {
-      const idx = answer.indices?.[0];
-      const display = idx ? `${idx}. ${answer.labels[0]}` : answer.labels[0];
+    } else if ('text' in answer) {
+      const display = answer.text.length > 0 ? answer.text : theme.fg("dim", "(未回答)");
       lines.push(` ✓ ${theme.fg("success", q.label)}: ${display}`);
+    } else if ('confirmed' in answer) {
+      lines.push(` ✓ ${theme.fg("success", q.label)}: ${answer.label}`);
+    } else if ('value' in answer && typeof answer.value === 'number') {
+      const annot = answer.annotation ? ` (${answer.annotation})` : '';
+      lines.push(` ✓ ${theme.fg("success", q.label)}: ${answer.value}${annot}`);
+    } else if ('value' in answer && typeof answer.value === 'string') {
+      if (answer.value.length === 0) {
+        lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
+      } else if (answer.wasCustom) {
+        lines.push(` ✓ ${theme.fg("success", q.label)}: ${theme.fg("muted", "(自定义) ")}${answer.label}`);
+      } else {
+        lines.push(` ✓ ${theme.fg("success", q.label)}: ${answer.label}`);
+      }
+    } else if ('values' in answer) {
+      if (answer.values.length === 0) {
+        lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
+      } else {
+        const parts = answer.labels.join(', ');
+        if (answer.wasCustom) {
+          lines.push(` ✓ ${theme.fg("success", q.label)}: ${parts} ${theme.fg("muted", "· 自定义")}`);
+        } else {
+          lines.push(` ✓ ${theme.fg("success", q.label)}: ${parts}`);
+        }
+      }
     }
   }
 
@@ -262,12 +272,9 @@ export function renderResultText(
   result: { content: Array<{ type: string; text: string }>; details: unknown },
   theme: { fg: (c: string, t: string) => string },
 ): Text {
-  const details = result.details as { cancelled?: boolean; answers?: Array<{
-    id: string;
-    labels: string[];
-    wasCustom?: boolean;
-    indices?: number[];
-  }> } | undefined;
+  const details = result.details as
+    | { cancelled?: boolean; message?: string; answers?: Record<string, Answer>; submittedAt?: string }
+    | undefined;
 
   if (!details) {
     const text = result.content[0];
@@ -275,36 +282,35 @@ export function renderResultText(
   }
 
   if (details.cancelled) {
-    return new Text(theme.fg("warning", "Cancelled"), 0, 0);
+    return new Text(theme.fg("warning", details.message || "Cancelled"), 0, 0);
   }
 
-  const answers = details.answers || [];
-  const lines = answers.flatMap((a) => {
-    if (a.labels.length === 0) {
-      return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${theme.fg("dim", "(none)")}`];
+  const answerMap = details.answers || {};
+  const entries = Object.entries(answerMap);
+  const lines = entries.flatMap(([id, a]) => {
+    const prefix = `${theme.fg("success", "✓ ")}${theme.fg("accent", id)}: `;
+    if ('text' in a) {
+      return [prefix + a.text];
     }
-    if (a.labels.length > 1 && a.wasCustom) {
-      const checkboxLabels = a.labels.slice(0, -1).map((l, i) => {
-        const idx = a.indices?.[i];
-        return idx ? `${idx}. ${l}` : l;
-      }).join(", ");
-      return [
-        `${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${checkboxLabels} ${theme.fg("muted", "· (wrote) ")}${a.labels[a.labels.length - 1]}`,
-      ];
+    if ('confirmed' in a) {
+      return [prefix + a.label];
     }
-    if (a.wasCustom) {
-      return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${theme.fg("muted", "(wrote) ")}${a.labels[0]}`];
+    if ('value' in a && typeof a.value === 'number') {
+      const annot = a.annotation ? ` (${a.annotation})` : '';
+      return [prefix + `${a.value}${annot}`];
     }
-    if (a.labels.length > 1) {
-      const parts = a.labels.map((l, i) => {
-        const idx = a.indices?.[i];
-        return idx ? `${idx}. ${l}` : l;
-      }).join(", ");
-      return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${parts}`];
+    if ('value' in a && typeof a.value === 'string') {
+      if (a.value.length === 0) return [prefix + theme.fg("dim", "(none)")];
+      if (a.wasCustom) return [prefix + theme.fg("muted", "(wrote) ") + a.label];
+      return [prefix + a.label];
     }
-    const idx = a.indices?.[0];
-    const display = idx ? `${idx}. ${a.labels[0]}` : a.labels[0];
-    return [`${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${display}`];
+    if ('values' in a) {
+      if (a.values.length === 0) return [prefix + theme.fg("dim", "(none)")];
+      const parts = a.labels.join(', ');
+      if (a.wasCustom) return [prefix + parts + ' ' + theme.fg("muted", "· (wrote)")];
+      return [prefix + parts];
+    }
+    return [prefix + theme.fg("dim", "(none)")];
   });
 
   return new Text(lines.join("\n"), 0, 0);

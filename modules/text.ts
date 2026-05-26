@@ -46,7 +46,10 @@ export function renderTextQuestion(
  */
 export function enterTextEdit(core: Core, editor: Editor): void {
   const state = core.getUIState();
-  editor.setText(state.textDraft || "");
+  const q = core.currentQuestion();
+  const existing = q ? core.answers.get(q.id) : undefined;
+  const existingText = existing && 'text' in existing ? existing.text : "";
+  editor.setText(state.textDraft || existingText || "");
 }
 
 /**

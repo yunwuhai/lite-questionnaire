@@ -14,7 +14,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Editor, type EditorTheme, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Core } from "./core";
-import type { QuestionnaireParams, QuestionnaireResult } from "./types";
+import type { Answer, CancelledResult, QuestionnaireParams, QuestionnaireResult } from "./types";
 import {
   panelTop,
   panelBottom,
@@ -32,7 +32,7 @@ import { renderMultiSelectOptions } from "./modules/multiSelect";
 import { renderTextQuestion, enterTextEdit } from "./modules/text";
 import { renderConfirmQuestion } from "./modules/confirm";
 import { renderRatingQuestion } from "./modules/rating";
-import { saveSnapshot } from "./state";
+import { loadSnapshot, saveSnapshot } from "./state";
 
 // ─── TypeBox Schema ────────────────────────────────────
 
@@ -81,7 +81,7 @@ const QuestionSchema = Type.Cyclic(
       Type.Object({
         ...BaseQuestionProps,
         type: Type.Literal("multiSelect"),
-        maxSelect: Type.Number({ minimum: 2 }),
+        maxSelect: Type.Integer({ minimum: 2 }),
         options: Type.Array(OptionSchema, { minItems: 1 }),
         children: Type.Optional(Type.Array(Type.Ref("Question"))),
       }),
@@ -102,9 +102,9 @@ const QuestionSchema = Type.Cyclic(
       Type.Object({
         ...BaseQuestionProps,
         type: Type.Literal("rating"),
-        range: Type.Object({ min: Type.Number(), max: Type.Number() }),
+        range: Type.Object({ min: Type.Integer(), max: Type.Integer() }),
         showEmoji: Type.Optional(Type.Boolean({ default: false })),
-        annotations: Type.Optional(Type.Record(Type.Number(), Type.String())),
+        annotations: Type.Optional(Type.Record(Type.String(), Type.String())),
         children: Type.Optional(Type.Array(Type.Ref("Question"))),
       }),
     ]),
@@ -115,6 +115,27 @@ const QuestionSchema = Type.Cyclic(
 const QuestionnaireParamsSchema = Type.Object({
   questions: Type.Array(QuestionSchema, { minItems: 1 }),
 });
+
+function findQuestion(questions: QuestionnaireParams["questions"], id: string): QuestionnaireParams["questions"][number] | undefined {
+  for (const q of questions) {
+    if (q.id === id) return q;
+    const child = q.children ? findQuestion(q.children, id) : undefined;
+    if (child) return child;
+  }
+  return undefined;
+}
+
+function questionnaireKey(questions: QuestionnaireParams["questions"]): string {
+  const parts: string[] = [];
+  const walk = (qs: QuestionnaireParams["questions"], prefix: string) => {
+    for (const q of qs) {
+      parts.push(`${prefix}${q.id}:${q.type}`);
+      if (q.children) walk(q.children, `${prefix}${q.id}/`);
+    }
+  };
+  walk(questions, "");
+  return parts.join("|");
+}
 
 // ─── 入口 ──────────────────────────────────────────────
 
@@ -145,22 +166,35 @@ export default function questionnaire(pi: ExtensionAPI) {
               text: "Error: UI not available (running in non-interactive mode)",
             },
           ],
-          details: { questions: input.questions, answers: [], cancelled: true },
+          details: { cancelled: true, message: "Error: UI not available (running in non-interactive mode)" },
         };
       }
 
       if (!input.questions || input.questions.length === 0) {
         return {
           content: [{ type: "text", text: "Error: No questions provided" }],
-          details: { questions: [], answers: [], cancelled: true },
+          details: { cancelled: true, message: "Error: No questions provided" },
         };
       }
 
       const core = new Core();
       core.init(input.questions);
       const originalQuestions = input.questions;
+      const snapshotKey = questionnaireKey(originalQuestions);
+      const snapshot = loadSnapshot(
+        ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,
+        snapshotKey,
+      );
+      if (snapshot) {
+        core.restore(snapshot);
+        core.questions = Core.expand(originalQuestions, core.answers);
+        core.pruneInactiveState();
+        if (core.currentIndex > core.questions.length) {
+          core.currentIndex = core.questions.length;
+        }
+      }
 
-      const result = await ctx.ui.custom<QuestionnaireResult>(
+      const result = await ctx.ui.custom<QuestionnaireResult | CancelledResult>(
         (tui, theme, _kb, done) => {
           const editorTheme: EditorTheme = {
             borderColor: (s) => theme.fg("accent", s),
@@ -182,12 +216,16 @@ export default function questionnaire(pi: ExtensionAPI) {
           }
 
           const handleSubmit = (cancelled: boolean) => {
-            saveSnapshot(pi, core);
-            done(core.toResult(cancelled));
+            saveSnapshot(pi, core, snapshotKey);
+            if (cancelled) {
+              done({ cancelled: true as const, message: "User cancelled the questionnaire" });
+            } else {
+              done(core.toResult());
+            }
           };
 
           const handleSave = () => {
-            saveSnapshot(pi, core);
+            saveSnapshot(pi, core, snapshotKey);
           };
 
           const handleInput = createInputHandler(
@@ -306,44 +344,36 @@ export default function questionnaire(pi: ExtensionAPI) {
         },
       );
 
-      if (result.cancelled) {
+      if ('cancelled' in result) {
         return {
-          content: [{ type: "text", text: "User cancelled the questionnaire" }],
+          content: [{ type: "text", text: result.message }],
           details: result,
         };
       }
 
-      const answerLines = result.answers.flatMap((a) => {
-        const q = result.questions.find((q) => q.id === a.id);
-        const qLabel = q?.label || a.id;
-        if (a.labels.length === 0) return [`${qLabel}: (未回答)`];
-        if (q?.type === "multiSelect" && a.labels.length > 1 && a.wasCustom) {
-          const checkboxLabels = a.labels
-            .slice(0, -1)
-            .map((l, i) => {
-              const idx = a.indices?.[i];
-              return idx ? `${idx}. ${l}` : l;
-            })
-            .join(", ");
-          return [
-            `${qLabel}: ${checkboxLabels} · (自定义) ${a.labels[a.labels.length - 1]}`,
-          ];
+      const answerLines = Object.entries(result.answers).flatMap(([id, a]) => {
+        const q = core.questions.find((q) => q.id === id) || findQuestion(originalQuestions, id);
+        const qLabel = q?.label || id;
+        if ('text' in a) {
+          return [`${qLabel}: ${a.text}`];
         }
-        if (a.wasCustom) return [`${qLabel}: (自定义) ${a.labels[0]}`];
-        if (q?.type === "multiSelect" && a.labels.length > 1) {
-          const parts = a.labels
-            .map((l, i) => {
-              const idx = a.indices?.[i];
-              return idx ? `${idx}. ${l}` : l;
-            })
-            .join(", ");
+        if ('confirmed' in a) {
+          return [`${qLabel}: ${a.label}`];
+        }
+        if ('value' in a && typeof a.value === 'number') {
+          return [`${qLabel}: ${a.value}${a.annotation ? ` (${a.annotation})` : ''}`];
+        }
+        if ('value' in a && typeof a.value === 'string') {
+          if (a.wasCustom) return [`${qLabel}: (自定义) ${a.label}`];
+          return [`${qLabel}: ${a.label}`];
+        }
+        if ('values' in a) {
+          if (a.labels.length === 0) return [`${qLabel}: (未回答)`];
+          const parts = a.labels.join(', ');
+          if (a.wasCustom) return [`${qLabel}: ${parts} · (自定义)`];
           return [`${qLabel}: ${parts}`];
         }
-        if (q?.type === "confirm") return [`${qLabel}: ${a.labels[0]}`];
-        const idx = a.indices?.[0];
-        return [
-          `${qLabel}: ${idx ? `${idx}. ${a.labels[0]}` : a.labels[0]}`,
-        ];
+        return [`${qLabel}: (未回答)`];
       });
 
       return {

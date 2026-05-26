@@ -72,7 +72,7 @@ export function renderRatingQuestion(
   }
 
   // 滑块条
-  const totalSteps = max - min;
+  const totalSteps = Math.max(1, max - min);
   const pos = current - min;
   const barWidth = Math.max(totalSteps * 2, 8);
 
@@ -88,9 +88,9 @@ export function renderRatingQuestion(
 
   // 文字注释行
   if (q.annotations) {
-    const minAnnot = q.annotations[min];
-    const maxAnnot = q.annotations[max];
-    const currentAnnot = q.annotations[current];
+    const minAnnot = q.annotations[String(min)];
+    const maxAnnot = q.annotations[String(max)];
+    const currentAnnot = q.annotations[String(current)];
     let annotLine = "";
     if (minAnnot && maxAnnot) {
       annotLine = `    ${theme.fg("dim", minAnnot)}${" ".repeat(Math.max(0, barWidth - minAnnot.length - maxAnnot.length))}${theme.fg("dim", maxAnnot)}`;

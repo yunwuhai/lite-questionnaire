@@ -57,13 +57,20 @@ export class Core {
         // 检查条件子问题是否应展开
         if (q.children && q.children.length > 0) {
           const answer = answers.get(q.id);
-          if (answer && answer.values.length > 0) {
-            const parentValue = answer.values[0];
-            const matching = q.children.filter(
-              (c) => !c.showIf || c.showIf.value === parentValue,
-            );
-            if (matching.length > 0) {
-              walk(matching, depth + 1, q.id);
+          if (answer) {
+            const parentValues: string[] = [];
+            if ('value' in answer && typeof answer.value === 'string') {
+              parentValues.push(answer.value);
+            } else if ('values' in answer) {
+              parentValues.push(...answer.values);
+            }
+            if (parentValues.length > 0) {
+              const matching = q.children.filter(
+                (c) => !c.showIf || parentValues.includes(c.showIf.value),
+              );
+              if (matching.length > 0) {
+                walk(matching, depth + 1, q.id);
+              }
             }
           }
         }
@@ -95,6 +102,7 @@ export class Core {
   reexpand(originalQuestions: Question[]): boolean {
     const before = this.questions.map((q) => q.id).join(",");
     this.questions = Core.expand(originalQuestions, this.answers);
+    this.pruneInactiveState();
     const after = this.questions.map((q) => q.id).join(",");
     return before !== after;
   }
@@ -155,34 +163,54 @@ export class Core {
   /** 问题是否已有有效答案 */
   hasAnswer(questionId: string): boolean {
     const a = this.answers.get(questionId);
-    return a !== undefined && a.values.length > 0;
+    if (!a) return false;
+    if ('values' in a) return a.values.length > 0;               // MultiSelectAnswer
+    if ('value' in a && typeof a.value === 'string') return a.value.length > 0; // SelectAnswer
+    if ('text' in a) return a.text.trim().length > 0;            // TextAnswer
+    // ConfirmAnswer (confirmed) / RatingAnswer (value: number) — 始终有值
+    return true;
+  }
+
+  /** 问题是否已完成：有答案，或可选题已访问且跳过 */
+  isComplete(q: FlatQuestion): boolean {
+    return this.hasAnswer(q.id) || (q.required === false && this.visited.has(q.id));
   }
 
   /** 保存答案 */
-  saveAnswer(
-    questionId: string,
-    values: string[],
-    labels: string[],
-    wasCustom: boolean,
-    indices?: number[],
-  ) {
-    this.answers.set(questionId, {
-      id: questionId,
-      values,
-      labels,
-      wasCustom,
-      indices: indices && indices.length > 0 ? indices : undefined,
-    });
+  saveAnswer(questionId: string, answer: Answer) {
+    this.answers.set(questionId, answer);
   }
 
-  /** 所有问题的答案是否已全部提交 */
+  /** 删除答案（回退修改后跳过时使用） */
+  deleteAnswer(questionId: string) {
+    this.answers.delete(questionId);
+  }
+
+  /** 移除当前展开列表中已经不可见的问题状态，避免隐藏子问题污染结果 */
+  pruneInactiveState() {
+    const activeIds = new Set(this.questions.map((q) => q.id));
+    for (const id of Array.from(this.answers.keys())) {
+      if (!activeIds.has(id)) this.answers.delete(id);
+    }
+    for (const id of Array.from(this.visited)) {
+      if (!activeIds.has(id)) this.visited.delete(id);
+    }
+    for (const id of Array.from(this.uiStates.keys())) {
+      if (!activeIds.has(id)) this.uiStates.delete(id);
+    }
+    if (this.currentIndex > this.questions.length) {
+      this.currentIndex = this.questions.length;
+    }
+  }
+
+  /** 所有问题是否均可提交 */
   allAnswered(): boolean {
-    return this.questions.every((q) => this.hasAnswer(q.id));
+    return this.questions.every((q) => this.isComplete(q));
   }
 
   /** 获取所有未完成的问题 id */
   incompleteQuestions(): string[] {
-    return this.questions.filter((q) => !this.hasAnswer(q.id)).map((q) => q.id);
+    return this.questions.filter((q) => !this.isComplete(q)).map((q) => q.id);
   }
 
   // ─── 进度点 ───────────────────────────────────────────
@@ -191,7 +219,7 @@ export class Core {
   getProgress(index: number): ProgressColor {
     const q = this.questions[index];
     if (!q) return "none";
-    if (this.hasAnswer(q.id)) return "green";
+    if (this.isComplete(q)) return "green";
     if (this.visited.has(q.id)) return "red";
     return "none";
   }
@@ -363,17 +391,21 @@ export class Core {
 
   // ─── 导出结果 ─────────────────────────────────────────
 
-  toResult(cancelled: boolean): QuestionnaireResult {
+  toResult(): QuestionnaireResult {
+    const answers: Record<string, Answer> = {};
+    for (const [id, answer] of this.answers) {
+      answers[id] = answer;
+    }
     return {
-      questions: this.questions,
-      answers: Array.from(this.answers.values()),
-      cancelled,
+      answers,
+      submittedAt: new Date().toISOString(),
     };
   }
 }
 
 /** 快照，用于会话持久化 */
 export interface QuestionnaireSnapshot {
+  key?: string;
   currentIndex: number;
   answers: [string, Answer][];
   visited: string[];

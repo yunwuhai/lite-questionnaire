@@ -31,7 +31,7 @@ export function renderSelectOptions(
     const opt = opts[i];
     const isCursor = i === state.optionIndex;
     const hasCustomText = opt.isCustom && state.customText !== null;
-    const isSelected = state.selectedIndices.includes(i) || hasCustomText;
+    const isSelected = state.selectedIndices.includes(i);
 
     // 前缀
     let prefix: string;

@@ -29,7 +29,7 @@ export function renderMultiSelectOptions(
     const opt = opts[i];
     const isCursor = i === state.optionIndex;
     const hasCustomText = opt.isCustom && state.customText !== null;
-    const checked = state.selectedIndices.includes(i) || hasCustomText;
+    const checked = state.selectedIndices.includes(i);
 
     // checkbox
     let box: string;

@@ -7,13 +7,13 @@
 
 import { Key, matchesKey } from "@earendil-works/pi-tui";
 import type { Editor } from "@earendil-works/pi-tui";
-import type { Core } from "../core";
-import type { Question } from "../types";
-import { getOptionsWithCustom } from "../render";
-import { handleSelectInput } from "../modules/select";
-import { handleMultiSelectInput } from "../modules/multiSelect";
-import { enterTextEdit, saveTextDraft } from "../modules/text";
-import type { ThemeLike } from "../modules/shared";
+import type { Core } from "./core";
+import type { Question } from "./types";
+import { getOptionsWithCustom } from "./render";
+import { handleSelectInput } from "./modules/select";
+import { handleMultiSelectInput } from "./modules/multiSelect";
+import { enterTextEdit, saveTextDraft } from "./modules/text";
+import type { ThemeLike } from "./modules/shared";
 
 /** 提交回调类型 */
 export type SubmitCallback = (cancelled: boolean) => void;
@@ -29,6 +29,7 @@ export function createInputHandler(
   onUpdate: () => void,
   theme: ThemeLike,
   originalQuestions: Question[],
+  saveFn: () => void,
 ) {
   /**
    * 提交当前问题的答案（答案已由各模块填充到 core）
@@ -38,55 +39,69 @@ export function createInputHandler(
     if (!q) return false;
 
     const state = core.getUIState();
-    const isMultiQuestion = core.questions.length > 1;
 
     // 根据类型构建答案
     switch (q.type) {
       case "select": {
         const opts = getOptionsWithCustom(q);
-        const hasCustomText = state.customText !== null;
-        const hasSelection = state.selectedIndices.length > 0 || hasCustomText;
+        const selIdx = state.selectedIndices[0] ?? -1;
+        const selected = opts[selIdx];
+        const isCustom = selected?.isCustom === true;
+        const customText = state.customText?.trim() || "";
+        const hasSelection = !!selected && (!isCustom || customText.length > 0);
 
         if (!hasSelection) {
-          // 没有选择：标记为访问过，继续前进（进度点红色）
+          core.deleteAnswer(q.id);
           core.markVisited();
           return true;
         }
 
-        const selIdx = state.selectedIndices[0] ?? -1;
-        const isCustom = state.selectedIndices.length === 0 && hasCustomText;
-        const value = isCustom ? (state.customText!) : opts[selIdx].value;
-        const label = isCustom ? (state.customText!) : opts[selIdx].label;
+        const value = isCustom ? customText : selected.value;
+        const label = isCustom ? customText : selected.label;
+        const validation = core.validate(q.id, [value], [label]);
+        if (!validation.valid) {
+          core.errorMessage = validation.message || null;
+          onUpdate();
+          return false;
+        }
 
-        core.saveAnswer(q.id, [value], [label], isCustom, isCustom ? undefined : [selIdx + 1]);
+        core.saveAnswer(q.id, { value, label, wasCustom: isCustom || undefined });
         return true;
       }
 
       case "multiSelect": {
         const opts = getOptionsWithCustom(q);
         const selIndices = state.selectedIndices;
-        const hasCustomText = state.customText !== null;
-        const hasSelection = selIndices.length > 0 || hasCustomText;
+        const customText = state.customText?.trim() || "";
 
-        if (!hasSelection) {
-          // 多选没有选择
+        if (selIndices.length === 0) {
+          core.deleteAnswer(q.id);
           core.markVisited();
           return true;
         }
 
         const values: string[] = [];
         const labels: string[] = [];
-        const indices: number[] = [];
+        let hasCustom = false;
 
         for (const idx of selIndices) {
-          values.push(opts[idx].value);
-          labels.push(opts[idx].label);
-          indices.push(idx + 1);
+          const opt = opts[idx];
+          if (!opt) continue;
+          if (opt.isCustom) {
+            if (!customText) continue;
+            values.push(customText);
+            labels.push(customText);
+            hasCustom = true;
+          } else {
+            values.push(opt.value);
+            labels.push(opt.label);
+          }
         }
 
-        if (hasCustomText) {
-          values.push(state.customText!);
-          labels.push(state.customText!);
+        if (values.length === 0) {
+          core.deleteAnswer(q.id);
+          core.markVisited();
+          return true;
         }
 
         // 约束校验
@@ -97,15 +112,24 @@ export function createInputHandler(
           return false; // 校验失败，不前进
         }
 
-        core.saveAnswer(q.id, values, labels, hasCustomText, indices.length > 0 ? indices : undefined);
+        core.saveAnswer(q.id, { values, labels, wasCustom: hasCustom || undefined });
         return true;
       }
 
       case "text": {
         const text = editor.getText().trim();
+        const state = core.getUIState();
+        state.textDraft = editor.getText();
+        core.saveUIState(state);
+
         if (!text) {
-          // 文本为空，标记访问
+          core.deleteAnswer(q.id);
           core.markVisited();
+          if (q.required !== false) {
+            core.errorMessage = "请输入内容";
+            onUpdate();
+            return false;
+          }
           return true;
         }
 
@@ -117,20 +141,20 @@ export function createInputHandler(
           return false;
         }
 
-        core.saveAnswer(q.id, [text], [text], false);
+        core.saveAnswer(q.id, { text });
         return true;
       }
 
       case "confirm": {
-        const value = state.confirmValue ? (q.yesLabel || "是") : (q.noLabel || "否");
-        core.saveAnswer(q.id, [String(state.confirmValue)], [value], false);
+        const label = state.confirmValue ? (q.yesLabel || "是") : (q.noLabel || "否");
+        core.saveAnswer(q.id, { confirmed: state.confirmValue, label });
         return true;
       }
 
       case "rating": {
-        const value = state.ratingValue;
-        const annot = q.annotations?.[value] || "";
-        core.saveAnswer(q.id, [String(value)], [annot || String(value)], false);
+        const v = state.ratingValue;
+        const annot = q.annotations?.[String(v)] || "";
+        core.saveAnswer(q.id, { value: v, annotation: annot });
         return true;
       }
 
@@ -146,8 +170,8 @@ export function createInputHandler(
     const q = core.currentQuestion();
     const answeredId = q?.id;
     
-    if (q && !core.hasAnswer(q.id)) {
-      // 尝试提交当前问题
+    if (q) {
+      // 每次 Enter 都以当前草稿重新提交，允许回退修改已答问题
       const submitted = submitCurrentQuestion();
       if (!submitted) return; // 校验失败
     }
@@ -155,15 +179,22 @@ export function createInputHandler(
     // 重新展开子问题（根据最新答案插入/移除子问题）
     if (answeredId) {
       core.reexpand(originalQuestions);
-      // 找到刚答完的问题的新位置，前进到下一题
+      // 找到刚处理完的问题的新位置，前进到下一题
       const answeredNewIdx = core.questions.findIndex((q) => q.id === answeredId);
       if (answeredNewIdx >= 0) {
-        core.currentIndex = answeredNewIdx + 1;
+        core.currentIndex = Math.min(answeredNewIdx + 1, core.questions.length);
       } else {
         core.advance();
       }
     } else {
       core.advance();
+    }
+
+    // 单题问卷答完后直接返回结果；多题问卷进入提交页汇总确认
+    if (core.questions.length === 1 && core.currentIndex >= core.questions.length && core.allAnswered()) {
+      saveFn();
+      submitFn(false);
+      return;
     }
 
     // 如果新问题是 text 类型，进入编辑模式
@@ -186,10 +217,7 @@ export function createInputHandler(
     // ─── 编辑模式（自定义选项编辑） ───
     if (core.inputMode) {
       if (matchesKey(data, Key.escape)) {
-        // 放弃编辑，返回选项列表
-        const state = core.getUIState();
-        state.customText = null;
-        core.saveUIState(state);
+        // 放弃本次编辑，保留进入编辑前的自定义草稿
         core.inputMode = false;
         core.inputQuestionId = null;
         editor.setText("");
@@ -231,12 +259,12 @@ export function createInputHandler(
         submitFn(true);
         return;
       }
-      if (matchesKey(data, Key.left) || matchesKey(data, Key.shift("tab"))) {
+      if (matchesKey(data, Key.left)) {
         core.prevTab();
         onUpdate();
         return;
       }
-      if (matchesKey(data, Key.right) || matchesKey(data, Key.tab)) {
+      if (matchesKey(data, Key.right)) {
         core.nextTab();
         onUpdate();
         return;
@@ -257,9 +285,9 @@ export function createInputHandler(
       return;
     }
 
-    // ← → 切换问题（多问题模式）
-    if (isMultiQuestion) {
-      if (matchesKey(data, Key.left) || matchesKey(data, Key.shift("tab"))) {
+    // ← → 切换问题（多问题模式）；confirm/rating 的 ← → 由题型自身处理
+    if (isMultiQuestion && q.type !== "confirm" && q.type !== "rating") {
+      if (matchesKey(data, Key.left)) {
         // 保存当前问题的草稿
         if (q.type === "text") {
           saveTextDraft(core, editor);
@@ -275,7 +303,7 @@ export function createInputHandler(
         onUpdate();
         return;
       }
-      if (matchesKey(data, Key.right) || matchesKey(data, Key.tab)) {
+      if (matchesKey(data, Key.right)) {
         if (q.type === "text") {
           saveTextDraft(core, editor);
         }
@@ -300,24 +328,26 @@ export function createInputHandler(
           return;
         }
 
-        // Space: 标定/取消选项
-        if (matchesKey(data, Key.space)) {
+        // Tab: 在“自定义”选项上进入编辑模式（与 Space 选择独立）
+        if (matchesKey(data, Key.tab)) {
           const state = core.getUIState();
           const opts = getOptionsWithCustom(q);
-          const curOpt = opts[state.optionIndex];
-
-          if (curOpt?.isCustom) {
-            // 自定义选项：进入编辑模式
+          if (opts[state.optionIndex]?.isCustom) {
             core.inputMode = true;
             core.inputQuestionId = q.id;
             editor.setText(state.customText || "");
+            onUpdate();
+            return;
+          }
+        }
+
+        // Space: 标定/取消选项
+        if (matchesKey(data, Key.space)) {
+          const state = core.getUIState();
+          if (state.selectedIndices.includes(state.optionIndex)) {
+            state.selectedIndices = [];
           } else {
-            // 普通选项：切换选择
-            if (state.selectedIndices.includes(state.optionIndex)) {
-              state.selectedIndices = [];
-            } else {
-              state.selectedIndices = [state.optionIndex];
-            }
+            state.selectedIndices = [state.optionIndex];
           }
           core.saveUIState(state);
           onUpdate();
@@ -338,30 +368,32 @@ export function createInputHandler(
           return;
         }
 
-        // Space: 切换勾选
-        if (matchesKey(data, Key.space)) {
+        // Tab: 在“自定义”选项上进入编辑模式（与 Space 勾选独立）
+        if (matchesKey(data, Key.tab)) {
           const state = core.getUIState();
           const opts = getOptionsWithCustom(q);
-          const curOpt = opts[state.optionIndex];
-
-          if (curOpt?.isCustom) {
-            // 自定义选项：进入编辑模式
+          if (opts[state.optionIndex]?.isCustom) {
             core.inputMode = true;
             core.inputQuestionId = q.id;
             editor.setText(state.customText || "");
+            onUpdate();
+            return;
+          }
+        }
+
+        // Space: 切换勾选
+        if (matchesKey(data, Key.space)) {
+          const state = core.getUIState();
+          const idx = state.selectedIndices.indexOf(state.optionIndex);
+          if (idx >= 0) {
+            state.selectedIndices.splice(idx, 1);
           } else {
-            // 切换勾选
-            const idx = state.selectedIndices.indexOf(state.optionIndex);
-            if (idx >= 0) {
-              state.selectedIndices.splice(idx, 1);
+            // 检查 maxSelect 限制（自定义选项也计入选择数）
+            if (q.maxSelect && state.selectedIndices.length >= q.maxSelect) {
+              core.errorMessage = `最多选择 ${q.maxSelect} 项`;
             } else {
-              // 检查 maxSelect 限制
-              if (q.maxSelect && state.selectedIndices.length >= q.maxSelect) {
-                core.errorMessage = `最多选择 ${q.maxSelect} 项`;
-              } else {
-                state.selectedIndices.push(state.optionIndex);
-                core.errorMessage = null;
-              }
+              state.selectedIndices.push(state.optionIndex);
+              core.errorMessage = null;
             }
           }
           core.saveUIState(state);
