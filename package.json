@@ -33,6 +33,7 @@
     "types.ts",
     "modules/",
     "design/",
+    "skills/",
     "README.md"
   ]
 }
