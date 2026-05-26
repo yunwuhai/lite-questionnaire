@@ -1,4 +1,4 @@
-# questionnaire
+# lite-questionnaire
 
 通用交互式问卷工具，支持单选、多选、文本输入、确认、评分五种问题类型，提供条件子问题、约束校验、会话持久化等高级特性。
 
@@ -338,7 +338,7 @@
 ## 代码架构
 
 ```
-questionnaire/
+lite-questionnaire/
 ├── index.ts            # 入口，注册工具 + TypeBox Schema + 渲染回调
 ├── core.ts             # 状态管理、子问题展开、状态机进度判定、约束校验
 ├── types.ts            # TypeScript 类型定义
