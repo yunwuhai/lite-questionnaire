@@ -150,7 +150,7 @@ export class Core {
 
   private defaultUIState(q?: FlatQuestion): QuestionUIState {
     const ratingMiddle = q && q.type === "rating"
-      ? Math.round((q.range.min + q.range.max) / 2)
+      ? 3
       : 0;
     return {
       optionIndex: 0,

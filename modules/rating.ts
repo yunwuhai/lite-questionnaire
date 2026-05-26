@@ -8,7 +8,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Core } from "../core";
 import type { ThemeLike } from "./shared";
 
-/** 5 级表情映射（用于 1-5 范围，其他范围插值） */
+/** 5 级表情映射 */
 const EMOJI_MAP: Record<number, string> = {
   1: "😡",
   2: "😟",
@@ -17,22 +17,11 @@ const EMOJI_MAP: Record<number, string> = {
   5: "😍",
 };
 
-/** 表情列表（用于任意范围插值） */
-const EMOJI_LIST = ["😡", "😟", "😐", "😊", "😍"];
-
 /**
- * 根据评分值和范围插值获取表情
+ * 根据评分值获取表情
  */
-function getEmoji(value: number, min: number, max: number): string {
-  if (min === 1 && max === 5) {
-    return EMOJI_MAP[value] || "😐";
-  }
-  if (max === min) return "😐";
-
-  // 插值到 0-4 索引
-  const ratio = (value - min) / (max - min);
-  const idx = Math.round(ratio * (EMOJI_LIST.length - 1));
-  return EMOJI_LIST[Math.max(0, Math.min(EMOJI_LIST.length - 1, idx))];
+function getEmoji(value: number): string {
+  return EMOJI_MAP[value];
 }
 
 /**
@@ -48,14 +37,13 @@ export function renderRatingQuestion(
 
   const lines: string[] = [];
   const state = core.getUIState();
-  const { min, max } = q.range;
   const current = state.ratingValue;
 
   const indent = "    ";
-  const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
-  const currentIndex = Math.max(0, Math.min(values.length - 1, current - min));
-  const numberLabels = values.map((v) => String(v));
-  const emojiLabels = values.map((v) => getEmoji(v, min, max));
+  const values = [1, 2, 3, 4, 5];
+  const currentIndex = current - 1;
+  const numberLabels = ["1", "2", "3", "4", "5"];
+  const emojiLabels = values.map((v) => getEmoji(v));
   const maxCellWidth = Math.max(
     1,
     ...numberLabels.map((label) => visibleWidth(label)),
@@ -94,8 +82,8 @@ export function renderRatingQuestion(
 
   // 文字注释行
   if (q.annotations) {
-    const minAnnot = q.annotations[String(min)];
-    const maxAnnot = q.annotations[String(max)];
+    const minAnnot = q.annotations["1"];
+    const maxAnnot = q.annotations["5"];
     const currentAnnot = q.annotations[String(current)];
     let annotLine = "";
     if (minAnnot && maxAnnot) {

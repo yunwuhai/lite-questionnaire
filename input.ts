@@ -278,14 +278,14 @@ export function createInputHandler(
       if (q.type === "rating") {
         if (matchesKey(data, Key.left)) {
           const state = core.getUIState();
-          state.ratingValue = Math.max(q.range.min, state.ratingValue - 1);
+          state.ratingValue = Math.max(1, state.ratingValue - 1);
           core.saveUIState(state);
           onUpdate();
           return;
         }
         if (matchesKey(data, Key.right)) {
           const state = core.getUIState();
-          state.ratingValue = Math.min(q.range.max, state.ratingValue + 1);
+          state.ratingValue = Math.min(5, state.ratingValue + 1);
           core.saveUIState(state);
           onUpdate();
           return;
@@ -293,7 +293,7 @@ export function createInputHandler(
         const numMatch = /^[1-9]$/.exec(data);
         if (numMatch) {
           const target = parseInt(numMatch[0], 10);
-          if (target >= q.range.min && target <= q.range.max) {
+          if (target >= 1 && target <= 5) {
             const state = core.getUIState();
             state.ratingValue = target;
             core.saveUIState(state);

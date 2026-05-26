@@ -59,7 +59,7 @@ export interface ConfirmQuestion extends BaseQuestion {
 
 export interface RatingQuestion extends BaseQuestion {
   type: "rating";
-  range: { min: number; max: number };
+  range: { min: 1; max: 5 };
   showEmoji?: boolean; // 是否显示表情量表
   annotations?: Record<string, string>; // 数值 → 文字注释
 }

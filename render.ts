@@ -125,12 +125,12 @@ export function renderTabBar(
 
 // ─── 问题标题 ───────────────────────────────────────────
 
-/** 渲染问题标题行（含 [必填] 标签） */
+/** 渲染问题标题行 */
 export function renderPrompt(
   q: FlatQuestion,
   theme: { fg: (c: string, t: string) => string; bold: (t: string) => string },
 ): string {
-  return ` ${q.prompt} ${theme.fg("warning", "[必填]")}`;
+  return ` ${q.prompt}`;
 }
 
 // ─── 提示栏 ─────────────────────────────────────────────

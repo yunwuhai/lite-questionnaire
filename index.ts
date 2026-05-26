@@ -101,7 +101,7 @@ const QuestionSchema = Type.Cyclic(
       Type.Object({
         ...BaseQuestionProps,
         type: Type.Literal("rating"),
-        range: Type.Object({ min: Type.Integer(), max: Type.Integer() }),
+        range: Type.Object({ min: Type.Literal(1), max: Type.Literal(5) }),
         showEmoji: Type.Optional(Type.Boolean({ default: false })),
         annotations: Type.Optional(Type.Record(Type.String(), Type.String())),
         children: Type.Optional(Type.Array(Type.Ref("Question"))),
