@@ -1,5 +1,9 @@
 # lite-questionnaire
 
+<p align="center">
+  <img src="image/logo.png" alt="lite-questionnaire logo" width="200">
+</p>
+
 通用交互式问卷工具，支持单选、多选、文本输入、确认、评分五种问题类型，提供条件子问题、约束校验、会话持久化等高级特性。
 
 ## 目录
