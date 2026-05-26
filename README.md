@@ -376,5 +376,12 @@ lite-questionnaire/
 │   └── rating.ts       # 评分滑块 + 表情渲染
 ├── design/
 │   └── questionnaire-openapi.yaml
+├── image/
+├── skills/
+│   └── lite-questionnaire/
+│       └── SKILL.md
+├── .gitignore
+├── LICENSE
+├── package.json
 └── README.md
 ```
