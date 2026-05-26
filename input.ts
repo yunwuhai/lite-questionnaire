@@ -315,7 +315,10 @@ export function createInputHandler(
           return;
         }
         if (matchesKey(data, Key.enter)) {
-          advance();
+          core.inputMode = false;
+          core.inputQuestionId = null;
+          saveFn();
+          onUpdate();
           return;
         }
         return;
@@ -323,7 +326,12 @@ export function createInputHandler(
 
       if (q.type === "text") {
         if (matchesKey(data, Key.enter)) {
-          advance();
+          saveTextDraft(core, editor);
+          core.inputMode = false;
+          core.inputQuestionId = null;
+          editor.setText("");
+          saveFn();
+          onUpdate();
           return;
         }
         editor.handleInput(data);

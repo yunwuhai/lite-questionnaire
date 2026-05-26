@@ -2,7 +2,7 @@
  * 文本输入问题模块
  *
  * 默认显示只读摘要；按 Tab 进入内联编辑。
- * 编辑态 Enter 提交并前进，Esc 退出编辑。
+ * 编辑态 Enter 保存并返回阅读模式，Esc 退出编辑。
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
