@@ -1,10 +1,10 @@
 /**
  * 评分滑块问题模块
  *
- * 滑块条 + 表情量表 + 文字注释，← → 调整，Enter 确认。
+ * 数字标尺 + 表情量表 + 下置光标，编辑态 ← → 调整，Enter 确认。
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Core } from "../core";
 import type { ThemeLike } from "./shared";
 
@@ -27,6 +27,8 @@ function getEmoji(value: number, min: number, max: number): string {
   if (min === 1 && max === 5) {
     return EMOJI_MAP[value] || "😐";
   }
+  if (max === min) return "😐";
+
   // 插值到 0-4 索引
   const ratio = (value - min) / (max - min);
   const idx = Math.round(ratio * (EMOJI_LIST.length - 1));
@@ -49,42 +51,46 @@ export function renderRatingQuestion(
   const { min, max } = q.range;
   const current = state.ratingValue;
 
+  const indent = "    ";
+  const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  const currentIndex = Math.max(0, Math.min(values.length - 1, current - min));
+  const numberLabels = values.map((v) => String(v));
+  const emojiLabels = values.map((v) => getEmoji(v, min, max));
+  const maxCellWidth = Math.max(
+    1,
+    ...numberLabels.map((label) => visibleWidth(label)),
+    ...(q.showEmoji ? emojiLabels.map((label) => visibleWidth(label)) : []),
+  );
+  const slotWidth = Math.max(3, maxCellWidth + 1);
+  const padSlot = (text: string): string => {
+    const padding = Math.max(0, slotWidth - visibleWidth(text));
+    const left = Math.floor(padding / 2);
+    const right = padding - left;
+    return " ".repeat(left) + text + " ".repeat(right);
+  };
+  const buildSlotLine = (labels: string[]): string => {
+    let line = "";
+    labels.forEach((label, index) => {
+      const cell = padSlot(label);
+      line += index === currentIndex ? theme.fg("accent", cell) : cell;
+    });
+    return line;
+  };
+
   // 数字标尺行
-  const numLabels: string[] = [];
-  for (let v = min; v <= max; v++) {
-    let label = String(v);
-    if (v === current) {
-      label = theme.fg("accent", label);
-    }
-    numLabels.push(label);
-  }
-  lines.push(truncateToWidth("    " + numLabels.join("   "), width));
+  const numberLine = buildSlotLine(numberLabels);
+  lines.push(truncateToWidth(indent + numberLine, width));
 
   // 表情行
   if (q.showEmoji) {
-    const emojiLabels: string[] = [];
-    for (let v = min; v <= max; v++) {
-      const emoji = getEmoji(v, min, max);
-      const highlighted = v === current;
-      emojiLabels.push(highlighted ? theme.fg("accent", emoji) : emoji);
-    }
-    lines.push(truncateToWidth("    " + emojiLabels.join("  "), width));
+    lines.push(truncateToWidth(indent + buildSlotLine(emojiLabels), width));
   }
 
-  // 滑块条
-  const totalSteps = Math.max(1, max - min);
-  const pos = current - min;
-  const barWidth = Math.max(totalSteps * 2, 8);
+  // 下置光标行：与数字/表情共用同一 slot 布局
+  const cursorLine = buildSlotLine(values.map((_, index) => (index === currentIndex ? "▲" : "")));
+  lines.push(truncateToWidth(indent + cursorLine, width));
 
-  let bar = "";
-  for (let i = 0; i <= barWidth; i++) {
-    if (i === Math.round((pos / totalSteps) * barWidth)) {
-      bar += theme.fg("accent", "●");
-    } else {
-      bar += "─";
-    }
-  }
-  lines.push(truncateToWidth("    " + bar, width));
+  const barWidth = visibleWidth(numberLine);
 
   // 文字注释行
   if (q.annotations) {
@@ -93,7 +99,7 @@ export function renderRatingQuestion(
     const currentAnnot = q.annotations[String(current)];
     let annotLine = "";
     if (minAnnot && maxAnnot) {
-      annotLine = `    ${theme.fg("dim", minAnnot)}${" ".repeat(Math.max(0, barWidth - minAnnot.length - maxAnnot.length))}${theme.fg("dim", maxAnnot)}`;
+      annotLine = `${indent}${theme.fg("dim", minAnnot)}${" ".repeat(Math.max(0, barWidth - visibleWidth(minAnnot) - visibleWidth(maxAnnot)))}${theme.fg("dim", maxAnnot)}`;
     }
     if (annotLine) {
       lines.push(truncateToWidth(annotLine, width));

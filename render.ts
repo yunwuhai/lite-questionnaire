@@ -62,7 +62,7 @@ export function progressDot(
     case "green":
       return theme.fg("success", glyph);
     case "red":
-      return theme.fg("warning", glyph);
+      return theme.fg("error", glyph);
     case "none":
       return theme.fg("dim", glyph);
   }
@@ -88,11 +88,18 @@ export function renderTabBar(
     let text = ` ${dot} ${q.label} `;
 
     if (isActive) {
-      text = theme.bg("selectedBg", theme.fg("text", text));
+      if (color === "green") {
+        text = theme.fg("success", text);
+      } else if (color === "red") {
+        text = theme.fg("error", text);
+      } else {
+        text = theme.fg("text", text);
+      }
+      text = theme.bg("selectedBg", text);
     } else if (color === "green") {
       text = theme.fg("success", text);
     } else if (color === "red") {
-      text = theme.fg("warning", text);
+      text = theme.fg("error", text);
     }
     parts.push(text);
     parts.push("│");
@@ -103,7 +110,7 @@ export function renderTabBar(
   const allDone = core.allAnswered();
   let submitText = " ✓ Submit ";
   if (isSubmit) {
-    submitText = theme.bg("selectedBg", theme.fg("text", submitText));
+    submitText = theme.bg("selectedBg", allDone ? theme.fg("success", submitText) : theme.fg("text", submitText));
   } else if (allDone) {
     submitText = theme.fg("success", submitText);
   } else {
@@ -141,7 +148,7 @@ export function renderHelpBar(
   theme: { fg: (c: string, t: string) => string },
 ): string {
   if (inputMode) {
-    return theme.fg("dim", " Enter 保存 · Esc 放弃编辑");
+    return theme.fg("dim", " ← → 调整/移动 · Enter 保存 · Esc 退出编辑");
   }
 
   if (!q) {
@@ -158,11 +165,11 @@ export function renderHelpBar(
       return theme.fg("dim", base + nav + extra);
     }
     case "text":
-      return theme.fg("dim", " Enter 提交 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
+      return theme.fg("dim", " Tab 编辑 · Enter 提交 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "confirm":
-      return theme.fg("dim", " ← → 选择 · Enter 确认 · Esc 取消");
+      return theme.fg("dim", " Tab 选择 · Enter 跳过 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "rating":
-      return theme.fg("dim", " ← → 调整 · Enter 确认 · Esc 取消");
+      return theme.fg("dim", " Tab 调整 · Enter 跳过 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     default:
       return theme.fg("dim", "");
   }
@@ -186,7 +193,7 @@ export function renderSubmitPage(
   for (const q of core.questions) {
     const answer = core.answers.get(q.id);
     if (!answer) {
-      lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
+      lines.push(` ⚠ ${theme.fg("error", q.label)}: ${theme.fg("dim", "(未回答)")}`);
     } else if ('text' in answer) {
       const display = answer.text.length > 0 ? answer.text : theme.fg("dim", "(未回答)");
       lines.push(` ✓ ${theme.fg("success", q.label)}: ${display}`);
@@ -197,7 +204,7 @@ export function renderSubmitPage(
       lines.push(` ✓ ${theme.fg("success", q.label)}: ${answer.value}${annot}`);
     } else if ('value' in answer && typeof answer.value === 'string') {
       if (answer.value.length === 0) {
-        lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
+        lines.push(` ⚠ ${theme.fg("error", q.label)}: ${theme.fg("dim", "(未回答)")}`);
       } else if (answer.wasCustom) {
         lines.push(` ✓ ${theme.fg("success", q.label)}: ${theme.fg("muted", "(自定义) ")}${answer.label}`);
       } else {
@@ -205,7 +212,7 @@ export function renderSubmitPage(
       }
     } else if ('values' in answer) {
       if (answer.values.length === 0) {
-        lines.push(` ⚠ ${theme.fg("warning", q.label)}: ${theme.fg("dim", "(未回答)")}`);
+        lines.push(` ⚠ ${theme.fg("error", q.label)}: ${theme.fg("dim", "(未回答)")}`);
       } else {
         const parts = answer.labels.join(', ');
         if (answer.wasCustom) {
@@ -225,7 +232,7 @@ export function renderSubmitPage(
       .filter((q) => incomplete.includes(q.id))
       .map((q) => q.label)
       .join(", ");
-    lines.push(` ⚠ ${theme.fg("warning", "未完成:")} ${theme.fg("dim", missing)} → ${theme.fg("warning", "无法提交")}`);
+    lines.push(` ⚠ ${theme.fg("error", "未完成:")} ${theme.fg("dim", missing)} → ${theme.fg("error", "无法提交")}`);
     lines.push(` ${theme.fg("dim", "← 回到问题修改")}`);
   } else {
     lines.push(` ${theme.fg("success", "全部完成，按 Enter 提交")}`);

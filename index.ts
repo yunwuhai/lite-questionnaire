@@ -29,7 +29,7 @@ import {
 import { createInputHandler } from "./input";
 import { renderSelectOptions } from "./modules/select";
 import { renderMultiSelectOptions } from "./modules/multiSelect";
-import { renderTextQuestion, enterTextEdit } from "./modules/text";
+import { renderTextQuestion } from "./modules/text";
 import { renderConfirmQuestion } from "./modules/confirm";
 import { renderRatingQuestion } from "./modules/rating";
 import { loadSnapshot, saveSnapshot } from "./state";
@@ -238,11 +238,6 @@ export default function questionnaire(pi: ExtensionAPI) {
             handleSave,
           );
 
-          const firstQ = core.currentQuestion();
-          if (firstQ && firstQ.type === "text") {
-            enterTextEdit(core, editor);
-          }
-
           function render(width: number): string[] {
             if (cachedLines) return cachedLines;
 
@@ -266,7 +261,7 @@ export default function questionnaire(pi: ExtensionAPI) {
               for (const line of submitLines) {
                 lines.push(panelLine(line, width));
               }
-            } else if (core.inputMode && q) {
+            } else if (core.inputMode && q && (q.type === "select" || q.type === "multiSelect")) {
               lines.push(panelLine(renderPrompt(q, theme), width));
               lines.push(panelLine("", width));
 

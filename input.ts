@@ -117,9 +117,14 @@ export function createInputHandler(
       }
 
       case "text": {
-        const text = editor.getText().trim();
         const state = core.getUIState();
-        state.textDraft = editor.getText();
+        const existing = core.answers.get(q.id);
+        const existingText = existing && 'text' in existing ? existing.text : "";
+        const rawText = core.inputMode && core.inputQuestionId === q.id
+          ? editor.getText()
+          : (state.textDraft || existingText);
+        const text = rawText.trim();
+        state.textDraft = rawText;
         core.saveUIState(state);
 
         if (!text) {
@@ -197,15 +202,29 @@ export function createInputHandler(
       return;
     }
 
-    // 如果新问题是 text 类型，进入编辑模式
+    // 标记新问题为已访问，但不自动进入编辑态；text/confirm/rating 需按 Tab 编辑
     const newQ = core.currentQuestion();
     if (newQ) {
       core.visited.add(newQ.id);
-      if (newQ.type === "text") {
-        enterTextEdit(core, editor);
-      }
     }
+    core.inputMode = false;
+    core.inputQuestionId = null;
+    editor.setText("");
     // 自动保存状态
+    saveFn();
+    onUpdate();
+  }
+
+  /**
+   * 前进到下一个问题或提交页，但不保存当前默认值（用于 nav 态跳过 confirm/rating）。
+   */
+  function skipCurrentAndAdvance() {
+    core.deleteAnswer(core.currentQuestion()?.id || "");
+    core.markVisited();
+    core.advance();
+    core.inputMode = false;
+    core.inputQuestionId = null;
+    editor.setText("");
     saveFn();
     onUpdate();
   }
@@ -214,25 +233,92 @@ export function createInputHandler(
    * 主输入处理函数
    */
   function handleInput(data: string) {
-    // ─── 编辑模式（自定义选项编辑） ───
+    // ─── 编辑模式（自定义/text/confirm/rating） ───
     if (core.inputMode) {
+      const q = core.currentQuestion();
+      if (!q) return;
+
       if (matchesKey(data, Key.escape)) {
-        // 放弃本次编辑，保留进入编辑前的自定义草稿
+        if (q.type === "text") {
+          saveTextDraft(core, editor);
+        }
         core.inputMode = false;
         core.inputQuestionId = null;
         editor.setText("");
         onUpdate();
         return;
       }
+
+      if (q.type === "confirm") {
+        if (matchesKey(data, Key.left)) {
+          const state = core.getUIState();
+          state.confirmValue = true;
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        if (matchesKey(data, Key.right)) {
+          const state = core.getUIState();
+          state.confirmValue = false;
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        if (matchesKey(data, Key.enter)) {
+          advance();
+          return;
+        }
+        return;
+      }
+
+      if (q.type === "rating") {
+        if (matchesKey(data, Key.left)) {
+          const state = core.getUIState();
+          state.ratingValue = Math.max(q.range.min, state.ratingValue - 1);
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        if (matchesKey(data, Key.right)) {
+          const state = core.getUIState();
+          state.ratingValue = Math.min(q.range.max, state.ratingValue + 1);
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        const numMatch = /^[1-9]$/.exec(data);
+        if (numMatch) {
+          const target = parseInt(numMatch[0], 10);
+          if (target >= q.range.min && target <= q.range.max) {
+            const state = core.getUIState();
+            state.ratingValue = target;
+            core.saveUIState(state);
+            onUpdate();
+          }
+          return;
+        }
+        if (matchesKey(data, Key.enter)) {
+          advance();
+          return;
+        }
+        return;
+      }
+
+      if (q.type === "text") {
+        if (matchesKey(data, Key.enter)) {
+          advance();
+          return;
+        }
+        editor.handleInput(data);
+        onUpdate();
+        return;
+      }
+
       if (matchesKey(data, Key.enter)) {
-        // 保存编辑内容，返回选项列表
+        // 保存自定义内容，返回选项列表
         const text = editor.getText().trim();
         const state = core.getUIState();
-        if (text) {
-          state.customText = text;
-        } else {
-          state.customText = null;
-        }
+        state.customText = text || null;
         core.saveUIState(state);
         core.inputMode = false;
         core.inputQuestionId = null;
@@ -240,7 +326,6 @@ export function createInputHandler(
         onUpdate();
         return;
       }
-      // 其他按键交给编辑器
       editor.handleInput(data);
       onUpdate();
       return;
@@ -285,34 +370,23 @@ export function createInputHandler(
       return;
     }
 
-    // ← → 切换问题（多问题模式）；confirm/rating 的 ← → 由题型自身处理
-    if (isMultiQuestion && q.type !== "confirm" && q.type !== "rating") {
+    // ← → 切换问题（多问题模式）；题目编辑态需先按 Tab 进入
+    if (isMultiQuestion) {
       if (matchesKey(data, Key.left)) {
-        // 保存当前问题的草稿
-        if (q.type === "text") {
-          saveTextDraft(core, editor);
-        }
-        // 标记当前问题为已访问
         core.markVisited();
         core.prevTab();
-        // 如果新问题是 text 类型，恢复编辑器
-        const newQ = core.currentQuestion();
-        if (newQ && newQ.type === "text") {
-          enterTextEdit(core, editor);
-        }
+        core.inputMode = false;
+        core.inputQuestionId = null;
+        editor.setText("");
         onUpdate();
         return;
       }
       if (matchesKey(data, Key.right)) {
-        if (q.type === "text") {
-          saveTextDraft(core, editor);
-        }
         core.markVisited();
         core.nextTab();
-        const newQ = core.currentQuestion();
-        if (newQ && newQ.type === "text") {
-          enterTextEdit(core, editor);
-        }
+        core.inputMode = false;
+        core.inputQuestionId = null;
+        editor.setText("");
         onUpdate();
         return;
       }
@@ -410,72 +484,30 @@ export function createInputHandler(
       }
 
       case "text": {
-        // Enter: 提交
+        if (matchesKey(data, Key.tab)) {
+          core.inputMode = true;
+          core.inputQuestionId = q.id;
+          enterTextEdit(core, editor);
+          onUpdate();
+          return;
+        }
         if (matchesKey(data, Key.enter)) {
           advance();
           return;
         }
-        // 其他按键交给编辑器
-        editor.handleInput(data);
-        onUpdate();
         return;
       }
 
-      case "confirm": {
-        // ← 选择是，→ 选择否
-        if (matchesKey(data, Key.left)) {
-          const state = core.getUIState();
-          state.confirmValue = true;
-          core.saveUIState(state);
-          onUpdate();
-          return;
-        }
-        if (matchesKey(data, Key.right)) {
-          const state = core.getUIState();
-          state.confirmValue = false;
-          core.saveUIState(state);
-          onUpdate();
-          return;
-        }
-        // Enter: 确认
-        if (matchesKey(data, Key.enter)) {
-          advance();
-          return;
-        }
-        break;
-      }
-
+      case "confirm":
       case "rating": {
-        // ← 减小值，→ 增大值
-        if (matchesKey(data, Key.left)) {
-          const state = core.getUIState();
-          state.ratingValue = Math.max(q.range.min, state.ratingValue - 1);
-          core.saveUIState(state);
+        if (matchesKey(data, Key.tab)) {
+          core.inputMode = true;
+          core.inputQuestionId = q.id;
           onUpdate();
           return;
         }
-        if (matchesKey(data, Key.right)) {
-          const state = core.getUIState();
-          state.ratingValue = Math.min(q.range.max, state.ratingValue + 1);
-          core.saveUIState(state);
-          onUpdate();
-          return;
-        }
-        // 数字键 1-9 快捷跳转
-        const numMatch = /^[1-9]$/.exec(data);
-        if (numMatch) {
-          const target = parseInt(numMatch[0], 10);
-          if (target >= q.range.min && target <= q.range.max) {
-            const state = core.getUIState();
-            state.ratingValue = target;
-            core.saveUIState(state);
-            onUpdate();
-          }
-          return;
-        }
-        // Enter: 确认
         if (matchesKey(data, Key.enter)) {
-          advance();
+          skipCurrentAndAdvance();
           return;
         }
         break;

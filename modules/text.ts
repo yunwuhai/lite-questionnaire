@@ -1,8 +1,8 @@
 /**
  * 文本输入问题模块
  *
- * 进入即内联编辑。Enter 提交并前进，Esc 取消问卷。
- * ← → 切换问题前保存草稿（通过 editor.getText()）。
+ * 默认显示只读摘要；按 Tab 进入内联编辑。
+ * 编辑态 Enter 提交并前进，Esc 退出编辑。
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
@@ -28,7 +28,15 @@ export function renderTextQuestion(
   lines.push(" " + theme.fg("muted", "你的回答："));
   lines.push("");
 
-  // 渲染编辑器内容
+  if (!core.inputMode) {
+    const state = core.getUIState();
+    const existing = core.answers.get(q.id);
+    const text = existing && 'text' in existing ? existing.text : state.textDraft;
+    lines.push(" " + theme.fg("dim", text ? `> ${text}` : `> ${placeholder}`));
+    return lines;
+  }
+
+  // 编辑态渲染编辑器内容
   const editorLines = editor.render(width - 2);
   if (editorLines.length === 0) {
     lines.push(" " + theme.fg("dim", `> ${placeholder}`));
