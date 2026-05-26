@@ -183,6 +183,7 @@ export class Core {
    * 优先检查持久化答案；没有答案时再检查当前 UI 草稿/默认值。
    */
   hasAnyValue(q: FlatQuestion, state?: QuestionUIState): boolean {
+    if (q.id === "__lq_notes__") return true;
     const answer = this.answers.get(q.id);
     if (this.answerHasValue(answer)) return true;
 

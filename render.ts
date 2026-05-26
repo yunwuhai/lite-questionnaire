@@ -108,7 +108,7 @@ export function renderTabBar(
   // 提交 Tab
   const isSubmit = core.isSubmitTab();
   const allDone = core.allAnswered();
-  let submitText = " ✓ Submit ";
+  let submitText = " ✓ 提交 ";
   if (isSubmit) {
     submitText = theme.bg("selectedBg", allDone ? theme.fg("success", submitText) : theme.fg("text", submitText));
   } else if (allDone) {
@@ -190,6 +190,7 @@ export function renderSubmitPage(
 
   for (const q of core.questions) {
     const answer = core.answers.get(q.id);
+    if (q.id === "__lq_notes__" && !answer) continue;
     if (!answer) {
       lines.push(` ⚠ ${theme.fg("error", q.label)}: ${theme.fg("dim", "(未回答)")}`);
     } else if ('text' in answer) {

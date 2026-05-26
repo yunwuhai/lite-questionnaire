@@ -14,7 +14,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Editor, type EditorTheme, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Core } from "./core";
-import type { Answer, CancelledResult, QuestionnaireParams, QuestionnaireResult } from "./types";
+import type { Answer, CancelledResult, QuestionnaireParams, QuestionnaireResult, Question } from "./types";
 import {
   panelTop,
   panelBottom,
@@ -177,8 +177,16 @@ export default function questionnaire(pi: ExtensionAPI) {
       }
 
       const core = new Core();
-      core.init(input.questions);
-      const originalQuestions = input.questions;
+      const notesQuestion: Question = {
+        id: "__lq_notes__",
+        label: "备注",
+        prompt: "有什么需要补充说明的吗？",
+        type: "text",
+        placeholder: "输入备注内容（可选）...",
+      };
+      const allQuestions = [...input.questions, notesQuestion];
+      core.init(allQuestions);
+      const originalQuestions = allQuestions;
       const snapshotKey = questionnaireKey(originalQuestions);
       const snapshot = loadSnapshot(
         ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,

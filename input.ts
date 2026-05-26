@@ -126,7 +126,7 @@ export function createInputHandler(
 
         if (!text) {
           core.deleteAnswer(q.id);
-          if (options.allowEmpty) {
+          if (options.allowEmpty || q.id === "__lq_notes__") {
             return true;
           }
           core.leaveCurrentQuestion();
