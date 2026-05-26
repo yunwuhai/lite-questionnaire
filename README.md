@@ -39,23 +39,23 @@
 
 ### 单选
 
-<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/select-demo.gif" width="600" alt="单选展示" />
+<img src="image/select-demo.gif" width="600" alt="单选展示" />
 
 ### 多选
 
-<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/multiselect-demo.gif" width="600" alt="多选定义" />
+<img src="image/multiselect-demo.gif" width="600" alt="多选定义" />
 
 ### 文本输入
 
-<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/text-demo.gif" width="600" alt="文本输入展示" />
+<img src="image/text-demo.gif" width="600" alt="文本输入展示" />
 
 ### 确认
 
-<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/confirm-demo.gif" width="600" alt="双选展示" />
+<img src="image/confirm-demo.gif" width="600" alt="双选展示" />
 
 ### 评分
 
-<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/rating-demo.gif" width="600" alt="评分量表" />
+<img src="image/rating-demo.gif" width="600" alt="评分量表" />
 
 ## 参数与字段说明
 
