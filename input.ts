@@ -256,20 +256,33 @@ export function createInputHandler(
       if (q.type === "confirm") {
         if (matchesKey(data, Key.left)) {
           const state = core.getUIState();
-          state.confirmValue = true;
+          state.optionIndex = 0; // 光标移到「是」
           core.saveUIState(state);
           onUpdate();
           return;
         }
         if (matchesKey(data, Key.right)) {
           const state = core.getUIState();
-          state.confirmValue = false;
+          state.optionIndex = 1; // 光标移到「否」
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        if (matchesKey(data, Key.space)) {
+          const state = core.getUIState();
+          state.confirmValue = state.optionIndex === 0; // ● 移到光标位置
           core.saveUIState(state);
           onUpdate();
           return;
         }
         if (matchesKey(data, Key.enter)) {
-          advance();
+          const state = core.getUIState();
+          state.confirmValue = state.optionIndex === 0; // 确认选中
+          core.saveUIState(state);
+          core.inputMode = false;
+          core.inputQuestionId = null;
+          saveFn();
+          onUpdate();
           return;
         }
         return;
@@ -492,7 +505,23 @@ export function createInputHandler(
         return;
       }
 
-      case "confirm":
+      case "confirm": {
+        if (matchesKey(data, Key.tab)) {
+          core.inputMode = true;
+          core.inputQuestionId = q.id;
+          // 进入选择态时，光标初始位置与当前 ● 一致
+          const state = core.getUIState();
+          state.optionIndex = state.confirmValue ? 0 : 1;
+          core.saveUIState(state);
+          onUpdate();
+          return;
+        }
+        if (matchesKey(data, Key.enter)) {
+          advance();
+          return;
+        }
+        break;
+      }
       case "rating": {
         if (matchesKey(data, Key.tab)) {
           core.inputMode = true;

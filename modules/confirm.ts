@@ -25,18 +25,27 @@ export function renderConfirmQuestion(
   const noLabel = q.noLabel || "否";
   const selectedYes = state.confirmValue === true;
 
-  // 渲染两个按钮
-  const yesBtn = selectedYes
+  // 是否处于选择态（Tab 进入的编辑模式）
+  const isEditing = core.inputMode && core.inputQuestionId === q.id;
+  // 选择态下光标位置：optionIndex=0 表示在「是」，1 表示在「否」
+  const cursorOnYes = isEditing && state.optionIndex === 0;
+  const cursorOnNo = isEditing && state.optionIndex === 1;
+
+  // 渲染两个按钮：● 表示已选中（基于 confirmValue），背景高亮表示光标（仅选择态可见）
+  const dot = theme.fg("success", "●");
+  const blank = " ";
+
+  const yesBtn = cursorOnYes
     ? theme.bg("selectedBg", theme.fg("text", ` [${yesLabel}] `))
     : ` [${yesLabel}] `;
-  const noBtn = !selectedYes
+  const noBtn = cursorOnNo
     ? theme.bg("selectedBg", theme.fg("text", ` [${noLabel}] `))
     : ` [${noLabel}] `;
 
-  const arrow = selectedYes
-    ? theme.fg("accent", ">") + " " + yesBtn + "  " + noBtn
-    : "  " + yesBtn + "  " + theme.fg("accent", ">") + " " + noBtn;
+  const row = selectedYes
+    ? dot + " " + yesBtn + "  " + blank + " " + noBtn
+    : blank + " " + yesBtn + "  " + dot + " " + noBtn;
 
-  lines.push(truncateToWidth(" " + arrow, width));
+  lines.push(truncateToWidth(" " + row, width));
   return lines;
 }

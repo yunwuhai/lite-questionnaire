@@ -143,6 +143,9 @@ export function renderHelpBar(
   theme: { fg: (c: string, t: string) => string },
 ): string {
   if (inputMode) {
+    if (q?.type === "confirm") {
+      return theme.fg("dim", " ← → 切换 · Space 选中 · Enter 确认 · Esc 退出");
+    }
     return theme.fg("dim", " ← → 调整/移动 · Enter 保存 · Esc 退出编辑");
   }
 
@@ -162,7 +165,7 @@ export function renderHelpBar(
     case "text":
       return theme.fg("dim", " Tab 编辑 · Enter 提交 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "confirm":
-      return theme.fg("dim", " Tab 选择 · Enter 确认 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
+      return theme.fg("dim", " Tab 编辑 · Enter 进入下一栏 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "rating":
       return theme.fg("dim", " Tab 调整 · Enter 确认 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     default:

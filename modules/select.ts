@@ -33,15 +33,10 @@ export function renderSelectOptions(
     const hasCustomText = opt.isCustom && state.customText !== null;
     const isSelected = state.selectedIndices.includes(i);
 
-    // 前缀
-    let prefix: string;
-    if (isCursor) {
-      prefix = theme.fg("accent", "> ");
-    } else if (isSelected) {
-      prefix = theme.fg("success", "• ");
-    } else {
-      prefix = "  ";
-    }
+    // 前缀：两列独立 — 列0: >, 列1: ●
+    const col0 = isCursor ? theme.fg("accent", ">") : " ";
+    const col1 = isSelected ? theme.fg("success", "●") : " ";
+    const prefix = col0 + col1 + " ";
 
     // 颜色
     const color = isCursor ? "accent" : isSelected ? "success" : "text";
