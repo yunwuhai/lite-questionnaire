@@ -140,8 +140,8 @@ function questionnaireKey(questions: QuestionnaireParams["questions"]): string {
 
 export default function questionnaire(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "questionnaire",
-    label: "Questionnaire",
+    name: "lite-questionnaire",
+    label: "Lite Questionnaire",
     description:
       "向用户展示交互式问卷。支持单选、多选、文本输入、确认、评分五种问题类型。" +
       "支持条件子问题、约束校验、自定义选项和会话持久化。",

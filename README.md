@@ -31,6 +31,28 @@
 
 > **注意**：所有问题均为必答。`confirm` 和 `rating` 具有默认值（是 / 3），无需进入编辑态即可直接 Enter 提交。`text` 类型留空按 Enter 会显示错误提示，不可跳过。←/→ 切换问题时自动提交当前草稿（有值则保存，无值则标红）。
 
+## 视觉演示
+
+### 单选
+
+<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/%E9%80%89%E6%8B%A9%E5%B1%95%E7%A4%BA.gif" width="600" alt="单选展示" />
+
+### 多选
+
+<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/%E5%A4%9A%E9%80%89%E5%AE%9A%E4%B9%89.gif" width="600" alt="多选定义" />
+
+### 文本输入
+
+<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/%E6%96%87%E6%9C%AC%E8%BE%93%E5%85%A5%E5%B1%95%E7%A4%BA.gif" width="600" alt="文本输入展示" />
+
+### 确认
+
+<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/%E5%8F%8C%E9%80%89%E5%B1%95%E7%A4%BA.gif" width="600" alt="双选展示" />
+
+### 评分
+
+<img src="https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/%E8%AF%84%E5%88%86%E9%87%8F%E8%A1%A8.gif" width="600" alt="评分量表" />
+
 ## 参数与字段说明
 
 顶层参数：

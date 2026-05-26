@@ -18,7 +18,8 @@
   },
   "pi": {
     "extensions": ["./index.ts"],
-    "skills": ["./skills"]
+    "skills": ["./skills"],
+    "image": "https://raw.githubusercontent.com/yunwuhai/lite-questionnaire/main/image/logo.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -34,6 +35,7 @@
     "types.ts",
     "modules/",
     "design/",
+    "image/",
     "skills/",
     "README.md"
   ]
