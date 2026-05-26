@@ -34,7 +34,7 @@ export function createInputHandler(
   /**
    * 提交当前问题的答案（答案已由各模块填充到 core）
    */
-  function submitCurrentQuestion(): boolean {
+  function submitCurrentQuestion(options: { allowEmpty?: boolean } = {}): boolean {
     const q = core.currentQuestion();
     if (!q) return false;
 
@@ -52,7 +52,6 @@ export function createInputHandler(
 
         if (!hasSelection) {
           core.deleteAnswer(q.id);
-          core.markVisited();
           return true;
         }
 
@@ -76,7 +75,6 @@ export function createInputHandler(
 
         if (selIndices.length === 0) {
           core.deleteAnswer(q.id);
-          core.markVisited();
           return true;
         }
 
@@ -100,7 +98,6 @@ export function createInputHandler(
 
         if (values.length === 0) {
           core.deleteAnswer(q.id);
-          core.markVisited();
           return true;
         }
 
@@ -129,13 +126,13 @@ export function createInputHandler(
 
         if (!text) {
           core.deleteAnswer(q.id);
-          core.markVisited();
-          if (q.required !== false) {
-            core.errorMessage = "请输入内容";
-            onUpdate();
-            return false;
+          if (options.allowEmpty) {
+            return true;
           }
-          return true;
+          core.leaveCurrentQuestion();
+          core.errorMessage = "请输入内容";
+          onUpdate();
+          return false;
         }
 
         // 约束校验
@@ -179,6 +176,7 @@ export function createInputHandler(
       // 每次 Enter 都以当前草稿重新提交，允许回退修改已答问题
       const submitted = submitCurrentQuestion();
       if (!submitted) return; // 校验失败
+      core.leaveCurrentQuestion();
     }
 
     // 重新展开子问题（根据最新答案插入/移除子问题）
@@ -216,12 +214,18 @@ export function createInputHandler(
   }
 
   /**
-   * 前进到下一个问题或提交页，但不保存当前默认值（用于 nav 态跳过 confirm/rating）。
+   * 通过 Tab 栏左右切换离开当前问题。
+   * 有有效草稿/默认值时保存答案；空值允许离开并标红；约束失败时阻止离开。
    */
-  function skipCurrentAndAdvance() {
-    core.deleteAnswer(core.currentQuestion()?.id || "");
-    core.markVisited();
-    core.advance();
+  function switchTab(direction: "prev" | "next") {
+    const submitted = submitCurrentQuestion({ allowEmpty: true });
+    if (!submitted) return;
+    core.leaveCurrentQuestion();
+    if (direction === "prev") {
+      core.prevTab();
+    } else {
+      core.nextTab();
+    }
     core.inputMode = false;
     core.inputQuestionId = null;
     editor.setText("");
@@ -373,21 +377,11 @@ export function createInputHandler(
     // ← → 切换问题（多问题模式）；题目编辑态需先按 Tab 进入
     if (isMultiQuestion) {
       if (matchesKey(data, Key.left)) {
-        core.markVisited();
-        core.prevTab();
-        core.inputMode = false;
-        core.inputQuestionId = null;
-        editor.setText("");
-        onUpdate();
+        switchTab("prev");
         return;
       }
       if (matchesKey(data, Key.right)) {
-        core.markVisited();
-        core.nextTab();
-        core.inputMode = false;
-        core.inputQuestionId = null;
-        editor.setText("");
-        onUpdate();
+        switchTab("next");
         return;
       }
     }
@@ -507,7 +501,7 @@ export function createInputHandler(
           return;
         }
         if (matchesKey(data, Key.enter)) {
-          skipCurrentAndAdvance();
+          advance();
           return;
         }
         break;

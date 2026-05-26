@@ -130,12 +130,7 @@ export function renderPrompt(
   q: FlatQuestion,
   theme: { fg: (c: string, t: string) => string; bold: (t: string) => string },
 ): string {
-  const required = q.required !== false; // 默认必填
-  let text = ` ${q.prompt}`;
-  if (required) {
-    text += ` ${theme.fg("warning", "[必填]")}`;
-  }
-  return text;
+  return ` ${q.prompt} ${theme.fg("warning", "[必填]")}`;
 }
 
 // ─── 提示栏 ─────────────────────────────────────────────
@@ -167,9 +162,9 @@ export function renderHelpBar(
     case "text":
       return theme.fg("dim", " Tab 编辑 · Enter 提交 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "confirm":
-      return theme.fg("dim", " Tab 选择 · Enter 跳过 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
+      return theme.fg("dim", " Tab 选择 · Enter 确认 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     case "rating":
-      return theme.fg("dim", " Tab 调整 · Enter 跳过 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
+      return theme.fg("dim", " Tab 调整 · Enter 确认 · Esc 取消" + (isMultiQuestion ? " · ← → 切换问题" : ""));
     default:
       return theme.fg("dim", "");
   }

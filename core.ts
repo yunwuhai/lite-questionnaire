@@ -26,8 +26,11 @@ export class Core {
   /** 持久化答案（已提交的） */
   answers = new Map<string, Answer>();
 
-  /** 已访问过的问题 id 集合（用于进度点红色标记） */
+  /** 已访问过的问题 id 集合（仅保留访问历史，不再直接决定进度颜色） */
   visited = new Set<string>();
+
+  /** 每个问题的进度点状态：none=未访问/未判定，red=已访问无值，green=已完成 */
+  private progress = new Map<string, ProgressColor>();
 
   /** 每个问题的 UI 瞬时状态 */
   private uiStates = new Map<string, QuestionUIState>();
@@ -88,6 +91,7 @@ export class Core {
     this.questions = Core.expand(questions, this.answers);
     this.currentIndex = 0;
     this.visited.clear();
+    this.progress.clear();
     this.answers.clear();
     this.uiStates.clear();
     this.inputMode = false;
@@ -160,30 +164,67 @@ export class Core {
 
   // ─── 答案管理 ─────────────────────────────────────────
 
-  /** 问题是否已有有效答案 */
-  hasAnswer(questionId: string): boolean {
-    const a = this.answers.get(questionId);
+  private answerHasValue(a: Answer | undefined): boolean {
     if (!a) return false;
     if ('values' in a) return a.values.length > 0;               // MultiSelectAnswer
-    if ('value' in a && typeof a.value === 'string') return a.value.length > 0; // SelectAnswer
+    if ('value' in a && typeof a.value === 'string') return a.value.trim().length > 0; // SelectAnswer
     if ('text' in a) return a.text.trim().length > 0;            // TextAnswer
     // ConfirmAnswer (confirmed) / RatingAnswer (value: number) — 始终有值
     return true;
   }
 
-  /** 问题是否已完成：有答案，或可选题已访问且跳过 */
+  /** 问题是否已有有效的持久化答案 */
+  hasAnswer(questionId: string): boolean {
+    return this.answerHasValue(this.answers.get(questionId));
+  }
+
+  /**
+   * 统一的值存在性判定。
+   * 优先检查持久化答案；没有答案时再检查当前 UI 草稿/默认值。
+   */
+  hasAnyValue(q: FlatQuestion, state?: QuestionUIState): boolean {
+    const answer = this.answers.get(q.id);
+    if (this.answerHasValue(answer)) return true;
+
+    const s = state || this.uiStates.get(q.id) || this.defaultUIState(q);
+    switch (q.type) {
+      case "confirm":
+      case "rating":
+        return true;
+      case "text":
+        return (s.textDraft || "").trim().length > 0;
+      case "select": {
+        const idx = s.selectedIndices[0];
+        if (idx === undefined) return false;
+        if (idx >= 0 && idx < q.options.length) return true;
+        return idx === q.options.length && (s.customText || "").trim().length > 0;
+      }
+      case "multiSelect":
+        return s.selectedIndices.some((idx) => {
+          if (idx >= 0 && idx < q.options.length) return true;
+          return idx === q.options.length && (s.customText || "").trim().length > 0;
+        });
+    }
+    return false;
+  }
+
+  /** 问题是否已完成：状态机判定为绿色，或已有有效持久化答案 */
   isComplete(q: FlatQuestion): boolean {
-    return this.hasAnswer(q.id) || (q.required === false && this.visited.has(q.id));
+    return this.progress.get(q.id) === "green" || this.hasAnswer(q.id);
   }
 
   /** 保存答案 */
   saveAnswer(questionId: string, answer: Answer) {
     this.answers.set(questionId, answer);
+    if (this.answerHasValue(answer)) {
+      this.progress.set(questionId, "green");
+    }
   }
 
   /** 删除答案（回退修改后跳过时使用） */
   deleteAnswer(questionId: string) {
     this.answers.delete(questionId);
+    this.progress.delete(questionId);
   }
 
   /** 移除当前展开列表中已经不可见的问题状态，避免隐藏子问题污染结果 */
@@ -194,6 +235,9 @@ export class Core {
     }
     for (const id of Array.from(this.visited)) {
       if (!activeIds.has(id)) this.visited.delete(id);
+    }
+    for (const id of Array.from(this.progress.keys())) {
+      if (!activeIds.has(id)) this.progress.delete(id);
     }
     for (const id of Array.from(this.uiStates.keys())) {
       if (!activeIds.has(id)) this.uiStates.delete(id);
@@ -215,13 +259,20 @@ export class Core {
 
   // ─── 进度点 ───────────────────────────────────────────
 
+  /** 离开当前问题时，根据是否有值统一更新进度点颜色 */
+  leaveCurrentQuestion() {
+    const q = this.currentQuestion();
+    if (!q) return;
+    const state = this.getUIState();
+    this.visited.add(q.id);
+    this.progress.set(q.id, this.hasAnyValue(q, state) ? "green" : "red");
+  }
+
   /** 获取指定索引问题的进度点颜色 */
   getProgress(index: number): ProgressColor {
     const q = this.questions[index];
     if (!q) return "none";
-    if (this.isComplete(q)) return "green";
-    if (this.visited.has(q.id)) return "red";
-    return "none";
+    return this.progress.get(q.id) || "none";
   }
 
   // ─── 导航 ─────────────────────────────────────────────
@@ -370,6 +421,7 @@ export class Core {
       currentIndex: this.currentIndex,
       answers: Array.from(this.answers.entries()).map(([id, a]) => [id, a]),
       visited: Array.from(this.visited),
+      progress: Array.from(this.progress.entries()),
       uiStates: Array.from(this.uiStates.entries()).map(([id, s]) => [
         id,
         {
@@ -384,6 +436,17 @@ export class Core {
     this.currentIndex = snapshot.currentIndex;
     this.answers = new Map(snapshot.answers);
     this.visited = new Set(snapshot.visited);
+    this.progress = new Map(snapshot.progress || []);
+    for (const [id, answer] of this.answers) {
+      if (this.answerHasValue(answer)) {
+        this.progress.set(id, "green");
+      }
+    }
+    for (const id of this.visited) {
+      if (!this.progress.has(id) && !this.hasAnswer(id)) {
+        this.progress.set(id, "red");
+      }
+    }
     this.uiStates = new Map(
       snapshot.uiStates.map(([id, s]) => [id, { ...s, selectedIndices: [...(s.selectedIndices ?? [])] }]),
     );
@@ -409,5 +472,6 @@ export interface QuestionnaireSnapshot {
   currentIndex: number;
   answers: [string, Answer][];
   visited: string[];
+  progress?: [string, ProgressColor][];
   uiStates: [string, QuestionUIState][];
 }

@@ -125,13 +125,6 @@ components:
           type: string
           description: 完整的问题文本，展示在面板主体区域
           example: "请选择你使用的编程语言"
-        required:
-          type: boolean
-          default: true
-          description: |
-            是否为必答问题。
-            必答题 prompt 后缀会显示 `[必填]` 标签；
-            非必答题允许跳过（Enter 不选直接进入下一题，进度点标记为绿色）。
         constraints:
           type: array
           description: 约束条件列表，声明式校验规则
@@ -446,7 +439,6 @@ components:
             maxSelect: 1
             label: "语言"
             prompt: "请选择你想使用的编程语言"
-            required: true
             options:
               - value: "ts"
                 label: "TypeScript"
@@ -477,7 +469,6 @@ components:
             maxSelect: 3
             label: "功能"
             prompt: "请选择你需要的功能模块"
-            required: true
             options:
               - value: "auth"
                 label: "用户认证"
@@ -501,7 +492,6 @@ components:
             type: "text"
             label: "描述"
             prompt: "请简要描述你的项目"
-            required: true
             placeholder: "输入项目描述..."
             multiline: true
             constraints:
@@ -520,7 +510,6 @@ components:
             type: "rating"
             label: "满意度"
             prompt: "你对当前开发体验的满意度如何？"
-            required: true
             range:
               min: 1
               max: 5

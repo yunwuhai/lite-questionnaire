@@ -26,7 +26,6 @@ export interface BaseQuestion {
   id: string; // 唯一标识
   label: string; // Tab 栏短标签
   prompt: string; // 完整问题文本
-  required?: boolean; // 默认 true，标签后缀 [必填]
   constraints?: Constraint[]; // 约束条件对象数组
   children?: Question[]; // 条件子问题（分步插入）
   showIf?: { value: string }; // 仅当父问题答案为指定值时显示

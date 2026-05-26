@@ -63,7 +63,6 @@ const BaseQuestionProps = {
   id: Type.String({ description: "问题唯一标识" }),
   label: Type.String({ description: "Tab 栏短标签" }),
   prompt: Type.String({ description: "完整问题文本" }),
-  required: Type.Optional(Type.Boolean({ description: "是否必答，默认 true" })),
   constraints: Type.Optional(Type.Array(ConstraintSchema)),
   showIf: Type.Optional(ShowIfSchema),
 };
