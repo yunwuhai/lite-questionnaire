@@ -14,7 +14,7 @@
   "author": "pi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yunwuhai/lite-questionnaire"
+    "url": "git+https://github.com/yunwuhai/lite-questionnaire.git"
   },
   "pi": {
     "extensions": ["./index.ts"]
